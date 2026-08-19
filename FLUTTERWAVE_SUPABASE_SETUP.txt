@@ -1,59 +1,47 @@
 CHADREY WHOLESALE — SUPABASE AND FLUTTERWAVE SETUP GUIDE
 
-Purpose
+Status
 
-This guide explains the configuration required for the Chadrey Wholesale Flutterwave payment workflow. Stripe is intentionally deferred and is not required for the current implementation.
+This guide applies to the current Chadrey Wholesale milestone. Stripe is intentionally deferred. The current payment integration supports Flutterwave hosted-checkout initiation and a server-side webhook boundary that validates the webhook hash, verifies the transaction with Flutterwave, checks invoice reference/currency/amount, prevents duplicate transaction processing, persists the payment, updates the invoice/order workflow, and sends the owner alert for a verified payment.
 
-1. Add the server secrets
+Required server secrets
 
-In the project’s secure environment/secrets manager, add the following variables. If Supabase is being used as the source of truth for application secrets, store the values in Supabase project secrets or the connected deployment secret store; do not commit them to the repository and do not expose them in client-side code.
+Store these values in the secure server-side secret store connected to the application. If Supabase is your secret-management source, add them to the Supabase project’s server/deployment secrets and map them into the deployed application environment. Do not commit them to GitHub and do not expose them through client-side code or VITE_ variables.
 
 FLUTTERWAVE_SECRET_KEY
-Purpose: Server-side transaction verification through the Flutterwave API.
-Value: Use the Flutterwave Secret Key from the Flutterwave Dashboard. Use the test key for sandbox testing and the live key only for production.
-Visibility: Server-only. Never use this variable in React or any VITE_ variable.
+Use the Flutterwave Secret Key from the Flutterwave Dashboard. This is used only by the server to create hosted checkout links and to verify transactions through Flutterwave’s API. Use a test key in sandbox mode and a live key only in production.
 
 FLUTTERWAVE_WEBHOOK_HASH
-Purpose: Verification of the verif-hash header sent with Flutterwave webhook deliveries.
-Value: Use the webhook secret/hash configured in Flutterwave.
-Visibility: Server-only. Never expose this variable in browser code.
+Use the webhook secret/hash configured in Flutterwave. The server compares this value with the incoming verif-hash header before reading the payment event.
 
-2. Configure the Flutterwave webhook
+Webhook URL
 
-Set the Flutterwave webhook URL to:
+Configure Flutterwave to send webhook events to:
 
 https://YOUR-PUBLISHED-CHADREY-DOMAIN/api/webhooks/flutterwave
 
-For a local or temporary environment, use a secure public HTTPS tunnel only for testing. The deployed application should receive the webhook over HTTPS.
+The webhook must be HTTPS in the deployed environment. Use a secure public HTTPS tunnel only for local testing.
 
-The endpoint expects Flutterwave’s verif-hash header. Requests with a missing or incorrect hash are rejected. The endpoint accepts only events with an invoice reference in the format invoice-N, where N is the internal invoice ID.
+Payment reference format
 
-3. Payment verification sequence
+The application uses invoice-N as the Flutterwave transaction reference, where N is the internal invoice ID. For example, invoice-42 refers to invoice ID 42. A webhook with no invoice reference is ignored, and an unknown invoice is rejected.
 
-The application does not trust the webhook payload alone. It validates the webhook hash, extracts the transaction reference, checks that the invoice exists, calls Flutterwave’s server-side transaction verification endpoint, confirms the transaction reference, currency, and amount, checks for duplicate transaction records, persists the payment, marks the invoice paid, creates the processing order, and sends the owner alert for the confirmed payment event.
+Verification sequence
 
-4. Testing checklist
+The server first validates verif-hash. It then extracts the transaction ID and invoice reference, checks for a previously persisted transaction, loads the invoice, calls Flutterwave’s transaction verification endpoint, confirms the transaction reference, currency, and amount, persists a successful Flutterwave payment, creates or reuses the processing order, updates payment/order status, and sends the owner notification. Replayed webhook deliveries must not create duplicate payment records or duplicate orders.
 
-Use Flutterwave test mode first. Create a quotation and invoice, use the resulting invoice reference in the hosted checkout flow, and confirm that the webhook reaches the published application. Confirm that an invalid verif-hash returns HTTP 401. Confirm that a valid successful event creates one payment record and one processing order. Replay the same webhook and confirm that it returns a duplicate response without creating another order. Confirm that the owner alert is sent only after server-side verification succeeds.
+Customer and admin routes
 
-5. Security requirements
+The public catalogue is available at /products. Product detail pages are available at /product?id=PRODUCT_ID. Customers create requests at /quote and review persisted requests at /dashboard. Quotation review is available at /quotation?quoteId=QUOTE_REQUEST_ID. Quote conversations are available at /messages?quoteId=QUOTE_REQUEST_ID. Customer order tracking is available at /orders?orderId=ORDER_ID. Administrators use /admin, compose quotations at /admin/quote?quoteId=QUOTE_REQUEST_ID, and manage fulfilment at /admin/fulfilment.
 
-Do not put either secret in client/src, client/public, HTML, browser storage, GitHub, or any VITE_ variable. Rotate keys if they are ever exposed. Keep Flutterwave test and live credentials separate. Configure the webhook URL separately for test and live environments. Do not treat a browser redirect or a client-side success message as proof of payment; the server-side verification path is authoritative.
+Testing checklist
 
-6. Stripe status
+Use Flutterwave test mode first. Create an accepted quotation and invoice, initiate hosted checkout, complete a sandbox transaction, and confirm that the webhook reaches the published application. Verify that an invalid verif-hash returns HTTP 401. Verify that a successful event creates one payment record and one processing order. Replay the same event and verify that it is treated as a duplicate. Confirm that the customer receives in-app notifications for quote received, quotation sent, invoice issued, and order shipped. Confirm that the owner alert is sent for a new quote and a verified payment only.
 
-Stripe is deferred. No Stripe secret, publishable key, webhook signing secret, or Stripe checkout route is required for this milestone. Stripe can be added later as a parallel payment provider after Stripe credentials are configured in the project settings.
+Security requirements
 
-7. Relevant application routes
+Keep both secrets server-only. Never place them in React source, HTML, browser storage, GitHub, or VITE_ variables. Rotate the values if exposed. Keep Flutterwave test and live environments separate. Do not treat a browser redirect as payment proof; server-side transaction verification is authoritative.
 
-Customer quote request: /quote
-Customer workspace: /dashboard
-Quotation review: /quotation?quoteId=QUOTE_REQUEST_ID
-Quote conversation: /messages?quoteId=QUOTE_REQUEST_ID
-Admin workspace: /admin
-Admin quotation composer: /admin/quote?quoteId=QUOTE_REQUEST_ID
-Flutterwave webhook: /api/webhooks/flutterwave
+Stripe status
 
-8. Final deployment note
-
-After adding the secrets, restart or redeploy the application so the server receives the updated environment values. Verify the webhook in Flutterwave’s dashboard and perform one sandbox transaction before switching to live credentials.
+Stripe remains deferred. No Stripe secret, publishable key, webhook signing secret, or Stripe checkout route is required for this milestone. Stripe can be added later as a parallel provider after Stripe credentials are configured in the project settings.

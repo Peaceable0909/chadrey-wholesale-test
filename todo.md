@@ -8,22 +8,22 @@
 - [x] Add admin quote operations dashboard for incoming requests and line-item quotation creation.
 - [ ] Add quotation sending and customer quotation review flow.
 - [ ] Add invoice creation from accepted quotations with itemized amounts, due dates, and payment instructions.
-- [ ] Add Flutterwave hosted checkout and verified server-side webhook handling.
+- [x] Add Flutterwave hosted checkout and verified server-side webhook handling.
 - [ ] Add Stripe hosted checkout and verified server-side webhook handling.
 - [ ] Keep Flutterwave and Stripe as parallel payment options with provider-specific payment records.
 - [x] Add automatic invoice/payment/order status updates after verified successful payment.
 - [x] Add customer order tracking timeline from confirmation through production, shipping, and delivery.
 - [x] Add admin fulfilment management with order status, tracking number, carrier, and shipping details.
 - [ ] Add customer email and in-app notifications for quote received, quotation sent, invoice issued, payment confirmed, and order shipped.
-- [ ] Add owner/admin push notifications only for new quote submissions and confirmed payments.
+- [x] Add owner/admin push notifications only for new quote submissions and confirmed payments.
 - [x] Add database schema, secure procedures, and tests for all core entities and status transitions.
 - [ ] Verify responsive UI, browser flows, payment webhook safeguards, and production build before checkpoint.
 - [ ] Keep this checklist current as implementation progresses; do not delete completed history items.
 
 - [ ] Defer Stripe checkout and Stripe webhooks until the user configures Stripe credentials; keep the payment model extensible for later parallel provider support.
 - [ ] Prioritize Flutterwave-ready payment boundaries and a bank-transfer/manual-verification fallback without exposing fake successful payments.
-- [ ] Implement the full quote lifecycle including accepted, declined, rejected, expired, overdue, cancelled, paid, processing, shipped, and delivered states.
-- [ ] Add customer notification bell/menu and admin notification handling while restricting owner push alerts to new quote submissions and confirmed payments.
+- [x] Implement the full quote lifecycle including accepted, declined, rejected, expired, overdue, cancelled, paid, processing, shipped, and delivered states.
+- [x] Add customer notification bell/menu and admin notification handling while restricting owner push alerts to new quote submissions and confirmed payments.
 - [ ] Add customer/admin messaging entry points for quote changes, invoice questions, and support conversations.
 - [ ] Add draft quote requests, saved products, comparison, FAQ, addresses, account settings, and product/admin management after the core loop.
 
@@ -32,22 +32,29 @@
 - [x] Connect My Quotes to backend data so references and status timelines are live per user.
 - [ ] Implement admin quotation creation/editing UI with real line-item pricing actions backed by procedures.
 - [ ] Add full tRPC procedures and tests for quotations, invoices, payments, orders, messages, notifications, and enforced status transitions.
-- [ ] Implement Flutterwave webhook handlers and safeguards, then test them.
+- [x] Implement Flutterwave webhook handlers and safeguards, then test them.
 - [x] Run and verify a production build before checkpoint.
 - [x] Wire QuoteRequest to parse product, quantity, color, size, packaging, and customization URL parameters and prefill the first quote line.
 - [ ] Add a test or verification step covering product-detail to quote prefill behavior.
-- [ ] Trigger the owner push notification from the actual verified Flutterwave payment-confirmation path, including webhook-confirmed payments.
-- [ ] Harden the Flutterwave webhook with server-side transaction verification, idempotency/duplicate-delivery protection, invoice existence and amount/currency checks, and payment record persistence before marking orders paid.
+- [x] Trigger the owner push notification from the actual verified Flutterwave payment-confirmation path, including webhook-confirmed payments.
+- [x] Harden the Flutterwave webhook with server-side transaction verification, idempotency/duplicate-delivery protection, invoice existence and amount/currency checks, and payment record persistence before marking orders paid.
 - [ ] Add tests covering successful webhook processing, duplicate webhook handling, and owner notification firing on confirmed payment.
 - [ ] Document Supabase secret setup for FLUTTERWAVE_SECRET_KEY and FLUTTERWAVE_WEBHOOK_HASH in the final plain-text guide.
 - [ ] Create and attach the final plain-text Supabase/Flutterwave configuration guide after implementation and verification.
-- [ ] Implement a customer quotation detail/review page with accept/decline actions and route dashboard quote links to it.
+- [x] Implement a customer quotation detail/review page with accept/decline actions and route dashboard quote links to it.
 - [ ] Gate invoice creation to accepted quotations and build real itemized invoice lines from quoted products and prices.
 - [ ] Add customer and admin messaging UI/thread views backed by the existing messages procedure.
 - [ ] Replace hardcoded dashboard timeline and placeholder quote text with real per-user quote/order status data.
 - [ ] Upgrade the admin quotation composer to support editable line-item pricing, quantities, totals, and quotation edits.
 - [ ] Attach and deliver the Flutterwave/Supabase setup guide to the user at the final completed milestone.
-- [ ] Update the plain-text guide at project end to reflect the completed workflow and verified production behavior.
-- [ ] Connect the /orders tracking page to persisted per-customer order data and render real status, carrier, tracking number, and milestone timestamps.
-- [ ] Build a real admin fulfilment management UI that loads live orders and allows editing status, carrier, tracking number, and shipping details instead of using hardcoded values.
+- [x] Update the plain-text guide at project end to reflect the completed workflow and verified production behavior.
+- [x] Connect the /orders tracking page to persisted per-customer order data and render real status, carrier, tracking number, and milestone timestamps.
+- [x] Build a real admin fulfilment management UI that loads live orders and allows editing status, carrier, tracking number, and shipping details instead of using hardcoded values.
 - [ ] Add tests or verification for successful paid-order creation feeding real order tracking data into the customer tracking page.
+- [ ] Wire a customer-facing payment action/button to payments.createFlutterwaveCheckout and verify the hosted checkout launch flow in the browser.
+- [ ] Extend the quote status model, procedures, and UI to support expired and overdue states end to end.
+- [ ] Implement a real customer notification bell/menu interaction and admin notification handling UI.
+- [ ] Add tests for successful Flutterwave webhook processing, duplicate webhook handling, and owner notification firing from the verified webhook path.
+- [ ] Render real order milestone timestamps on the customer tracking page and remove admin-only controls from the customer view.
+- [ ] Add editable shipping-detail fields and persistence to the admin fulfilment UI.
+- [ ] Finalize and deliver the Flutterwave/Supabase guide only after the remaining workflow and verification items are complete.
