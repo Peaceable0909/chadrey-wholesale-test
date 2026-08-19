@@ -55,6 +55,6 @@
 - [ ] Extend the quote status model, procedures, and UI to support expired and overdue states end to end.
 - [ ] Implement a real customer notification bell/menu interaction and admin notification handling UI.
 - [ ] Add tests for successful Flutterwave webhook processing, duplicate webhook handling, and owner notification firing from the verified webhook path.
-- [ ] Render real order milestone timestamps on the customer tracking page and remove admin-only controls from the customer view.
+- [x] Render real order milestone timestamps on the customer tracking page and remove admin-only controls from the customer view.
 - [ ] Add editable shipping-detail fields and persistence to the admin fulfilment UI.
 - [ ] Finalize and deliver the Flutterwave/Supabase guide only after the remaining workflow and verification items are complete.
