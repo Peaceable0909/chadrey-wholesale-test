@@ -8,7 +8,8 @@ import { registerStorageProxy } from "./storageProxy";
 import { appRouter } from "../routers";
 import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
-import { verifyFlutterwaveWebhookHash, normalizeFlutterwaveEvent, paymentMatchesInvoice, verifyFlutterwaveTransaction } from "../flutterwave";
+import { processFlutterwaveWebhook } from "../flutterwaveWebhook";
+import { verifyFlutterwaveTransaction } from "../flutterwave";
 import { createPaidOrder, getInvoiceById, getPaymentByTransaction, recordPayment } from "../db";
 import { notifyOwner } from "./notification";
 
@@ -40,22 +41,8 @@ async function startServer() {
   registerStorageProxy(app);
   registerOAuthRoutes(app);
   app.post("/api/webhooks/flutterwave", async (req, res) => {
-    const providedHash = req.header("verif-hash");
-    if (!verifyFlutterwaveWebhookHash(providedHash)) return res.status(401).json({ ok: false, error: "Invalid webhook signature" });
-    const event = normalizeFlutterwaveEvent(req.body);
-    if (!event.transactionId || !event.txRef?.startsWith("invoice-")) return res.status(200).json({ ok: true, ignored: true });
-    const existing = await getPaymentByTransaction(event.transactionId);
-    if (existing) return res.status(200).json({ ok: true, duplicate: true });
-    const invoiceId = Number(event.txRef.replace("invoice-", ""));
-    if (!Number.isInteger(invoiceId) || invoiceId <= 0) return res.status(400).json({ ok: false, error: "Invalid invoice reference" });
-    const invoice = await getInvoiceById(invoiceId);
-    if (!invoice) return res.status(404).json({ ok: false, error: "Invoice not found" });
-    const verified = await verifyFlutterwaveTransaction(event.transactionId);
-    if (!paymentMatchesInvoice({ txRef: verified.tx_ref, expectedTxRef: event.txRef, amount: Number(verified.amount), expectedAmount: Number(invoice.total), currency: verified.currency, expectedCurrency: invoice.currency })) return res.status(400).json({ ok: false, error: "Payment does not match invoice" });
-    await recordPayment({ invoiceId, provider: "flutterwave", transactionId: String(verified.id), providerReference: verified.tx_ref, amount: String(verified.amount), currency: verified.currency, method: verified.payment_type, rawPayload: req.body });
-    const orderId = await createPaidOrder(invoiceId);
-    await notifyOwner({ title: "Payment confirmed", content: `Flutterwave verified payment for invoice ${invoiceId}; order ${orderId} is processing.` });
-    return res.status(200).json({ ok: true, orderId });
+    const result = await processFlutterwaveWebhook({ hash: req.header("verif-hash") || undefined, body: req.body }, { getPaymentByTransaction, getInvoiceById, recordPayment, createPaidOrder, verifyTransaction: (id) => verifyFlutterwaveTransaction(id), notifyOwner });
+    return res.status(result.status).json(result.body);
   });
   // tRPC API
   app.use(

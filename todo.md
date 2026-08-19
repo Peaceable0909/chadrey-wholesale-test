@@ -54,7 +54,10 @@
 - [ ] Wire a customer-facing payment action/button to payments.createFlutterwaveCheckout and verify the hosted checkout launch flow in the browser.
 - [ ] Extend the quote status model, procedures, and UI to support expired and overdue states end to end.
 - [ ] Implement a real customer notification bell/menu interaction and admin notification handling UI.
-- [ ] Add tests for successful Flutterwave webhook processing, duplicate webhook handling, and owner notification firing from the verified webhook path.
+- [x] Add tests for successful Flutterwave webhook processing, duplicate webhook handling, and owner notification firing from the verified webhook path.
 - [x] Render real order milestone timestamps on the customer tracking page and remove admin-only controls from the customer view.
 - [ ] Add editable shipping-detail fields and persistence to the admin fulfilment UI.
 - [ ] Finalize and deliver the Flutterwave/Supabase guide only after the remaining workflow and verification items are complete.
+- [ ] Add integration-style tests for /api/webhooks/flutterwave covering a verified successful payment that persists the payment and creates or updates the order.
+- [ ] Add a webhook replay test asserting duplicate handling produces no duplicate payment or order.
+- [ ] Add a webhook notification test asserting owner notification fires only after verified successful payment processing.
