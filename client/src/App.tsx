@@ -9,6 +9,9 @@ import ProductDetail from "./pages/ProductDetail";
 import QuoteRequest from "./pages/QuoteRequest";
 import CustomerDashboard from "./pages/CustomerDashboard";
 import AdminDashboard from "./pages/AdminDashboard";
+import AdminQuoteComposer from "./pages/AdminQuoteComposer";
+import QuotationReview from "./pages/QuotationReview";
+import QuoteMessages from "./pages/QuoteMessages";
 import NotFound from "./pages/NotFound";
 
 function Router() {
@@ -20,6 +23,9 @@ function Router() {
       <Route path="/quote" component={QuoteRequest} />
       <Route path="/dashboard" component={CustomerDashboard} />
       <Route path="/admin" component={AdminDashboard} />
+      <Route path="/admin/quote" component={AdminQuoteComposer} />
+      <Route path="/quotation" component={QuotationReview} />
+      <Route path="/messages" component={QuoteMessages} />
       <Route path="/404" component={NotFound} />
       <Route component={NotFound} />
     </Switch>

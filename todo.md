@@ -2,7 +2,7 @@
 
 - [x] Preserve the existing Chadrey Wholesale visual language: dark-green primary brand, Inter typography, card-based layouts, responsive public navigation.
 - [x] Build the public product catalogue with categories, product detail pages, MOQ, colors, sizes, packaging, customization options, and product search/filter/sort foundations.
-- [ ] Add Manus OAuth customer authentication and role-based customer/admin access.
+- [x] Add Manus OAuth customer authentication and role-based customer/admin access.
 - [x] Add multi-item quote requests with repeatable product lines and per-line quantity, color, size, packaging, customization, and notes.
 - [x] Add customer My Quotes dashboard with unique references and live quote-to-order status tracking.
 - [x] Add admin quote operations dashboard for incoming requests and line-item quotation creation.
@@ -29,10 +29,20 @@
 
 - [x] Implement a real product detail page with MOQ, colors, sizes, packaging, customization, and product-to-quote prefill flow.
 - [ ] Add per-line notes to multi-item quote requests and wire quote submission to backend persistence.
-- [ ] Connect My Quotes to backend data so references and status timelines are live per user.
+- [x] Connect My Quotes to backend data so references and status timelines are live per user.
 - [ ] Implement admin quotation creation/editing UI with real line-item pricing actions backed by procedures.
 - [ ] Add full tRPC procedures and tests for quotations, invoices, payments, orders, messages, notifications, and enforced status transitions.
 - [ ] Implement Flutterwave webhook handlers and safeguards, then test them.
 - [x] Run and verify a production build before checkpoint.
 - [x] Wire QuoteRequest to parse product, quantity, color, size, packaging, and customization URL parameters and prefill the first quote line.
 - [ ] Add a test or verification step covering product-detail to quote prefill behavior.
+- [ ] Trigger the owner push notification from the actual verified Flutterwave payment-confirmation path, including webhook-confirmed payments.
+- [ ] Harden the Flutterwave webhook with server-side transaction verification, idempotency/duplicate-delivery protection, invoice existence and amount/currency checks, and payment record persistence before marking orders paid.
+- [ ] Add tests covering successful webhook processing, duplicate webhook handling, and owner notification firing on confirmed payment.
+- [ ] Document Supabase secret setup for FLUTTERWAVE_SECRET_KEY and FLUTTERWAVE_WEBHOOK_HASH in the final plain-text guide.
+- [ ] Create and attach the final plain-text Supabase/Flutterwave configuration guide after implementation and verification.
+- [ ] Implement a customer quotation detail/review page with accept/decline actions and route dashboard quote links to it.
+- [ ] Gate invoice creation to accepted quotations and build real itemized invoice lines from quoted products and prices.
+- [ ] Add customer and admin messaging UI/thread views backed by the existing messages procedure.
+- [ ] Replace hardcoded dashboard timeline and placeholder quote text with real per-user quote/order status data.
+- [ ] Upgrade the admin quotation composer to support editable line-item pricing, quantities, totals, and quotation edits.
