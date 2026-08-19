@@ -1,28 +1,25 @@
-import { int, mysqlEnum, mysqlTable, text, timestamp, varchar } from "drizzle-orm/mysql-core";
+import { int, json, mysqlEnum, mysqlTable, text, timestamp, varchar, decimal, date } from "drizzle-orm/mysql-core";
 
-/**
- * Core user table backing auth flow.
- * Extend this file with additional tables as your product grows.
- * Columns use camelCase to match both database fields and generated types.
- */
 export const users = mysqlTable("users", {
-  /**
-   * Surrogate primary key. Auto-incremented numeric value managed by the database.
-   * Use this for relations between tables.
-   */
-  id: int("id").autoincrement().primaryKey(),
-  /** Manus OAuth identifier (openId) returned from the OAuth callback. Unique per user. */
-  openId: varchar("openId", { length: 64 }).notNull().unique(),
-  name: text("name"),
-  email: varchar("email", { length: 320 }),
-  loginMethod: varchar("loginMethod", { length: 64 }),
-  role: mysqlEnum("role", ["user", "admin"]).default("user").notNull(),
-  createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
-  lastSignedIn: timestamp("lastSignedIn").defaultNow().notNull(),
+  id: int("id").autoincrement().primaryKey(), openId: varchar("openId", { length: 64 }).notNull().unique(), name: text("name"), email: varchar("email", { length: 320 }), loginMethod: varchar("loginMethod", { length: 64 }), role: mysqlEnum("role", ["user", "admin"]).default("user").notNull(), companyName: varchar("companyName", { length: 200 }), phone: varchar("phone", { length: 40 }), whatsapp: varchar("whatsapp", { length: 40 }), createdAt: timestamp("createdAt").defaultNow().notNull(), updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(), lastSignedIn: timestamp("lastSignedIn").defaultNow().notNull(),
 });
 
-export type User = typeof users.$inferSelect;
-export type InsertUser = typeof users.$inferInsert;
+export const products = mysqlTable("products", { id: int("id").autoincrement().primaryKey(), slug: varchar("slug", { length: 120 }).notNull().unique(), name: varchar("name", { length: 220 }).notNull(), description: text("description").notNull(), category: varchar("category", { length: 80 }).notNull(), moq: int("moq").notNull(), colors: json("colors").notNull(), sizes: json("sizes").notNull(), packagingOptions: json("packagingOptions").notNull(), customizationOptions: json("customizationOptions").notNull(), images: json("images"), isActive: int("isActive").default(1).notNull(), createdAt: timestamp("createdAt").defaultNow().notNull() });
 
-// TODO: Add your tables here
+export const quoteRequests = mysqlTable("quoteRequests", { id: int("id").autoincrement().primaryKey(), ref: varchar("ref", { length: 32 }).notNull().unique(), customerId: int("customerId").notNull(), status: mysqlEnum("status", ["draft","pending","quoted","accepted","declined","rejected","expired","invoiced","overdue","paid","processing","shipped","delivered","cancelled"]).default("pending").notNull(), notes: text("notes"), adminNotes: text("adminNotes"), rejectionReason: text("rejectionReason"), createdAt: timestamp("createdAt").defaultNow().notNull(), updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull() });
+
+export const quoteRequestItems = mysqlTable("quoteRequestItems", { id: int("id").autoincrement().primaryKey(), quoteRequestId: int("quoteRequestId").notNull(), productId: int("productId").notNull(), quantity: int("quantity").notNull(), color: varchar("color", { length: 50 }).notNull(), size: varchar("size", { length: 30 }).notNull(), packaging: varchar("packaging", { length: 120 }).notNull(), customization: varchar("customization", { length: 160 }).notNull() });
+
+export const quotations = mysqlTable("quotations", { id: int("id").autoincrement().primaryKey(), quoteRequestId: int("quoteRequestId").notNull(), currency: varchar("currency", { length: 8 }).default("NGN").notNull(), subtotal: decimal("subtotal", { precision: 12, scale: 2 }).notNull(), notes: text("notes"), issuedBy: int("issuedBy").notNull(), status: mysqlEnum("status", ["sent","accepted","declined","expired"]).default("sent").notNull(), issuedAt: timestamp("issuedAt").defaultNow().notNull(), expiresAt: timestamp("expiresAt") });
+
+export const invoices = mysqlTable("invoices", { id: int("id").autoincrement().primaryKey(), quotationId: int("quotationId").notNull(), total: decimal("total", { precision: 12, scale: 2 }).notNull(), shippingCost: decimal("shippingCost", { precision: 12, scale: 2 }).default("0").notNull(), tax: decimal("tax", { precision: 12, scale: 2 }).default("0").notNull(), lineItems: json("lineItems").notNull(), currency: varchar("currency", { length: 8 }).default("NGN").notNull(), dueDate: date("dueDate").notNull(), paymentInstructions: text("paymentInstructions"), status: mysqlEnum("status", ["sent","paid","overdue"]).default("sent").notNull(), issuedAt: timestamp("issuedAt").defaultNow().notNull() });
+
+export const payments = mysqlTable("payments", { id: int("id").autoincrement().primaryKey(), invoiceId: int("invoiceId").notNull(), provider: mysqlEnum("provider", ["flutterwave","stripe","bank_transfer"]).notNull(), providerReference: varchar("providerReference", { length: 160 }), transactionId: varchar("transactionId", { length: 160 }), amount: decimal("amount", { precision: 12, scale: 2 }).notNull(), currency: varchar("currency", { length: 8 }).notNull(), method: varchar("method", { length: 40 }), status: mysqlEnum("status", ["pending","successful","failed"]).default("pending").notNull(), rawPayload: json("rawPayload"), createdAt: timestamp("createdAt").defaultNow().notNull() });
+
+export const orders = mysqlTable("orders", { id: int("id").autoincrement().primaryKey(), invoiceId: int("invoiceId").notNull(), status: mysqlEnum("status", ["processing","shipped","delivered","cancelled"]).default("processing").notNull(), trackingNumber: varchar("trackingNumber", { length: 120 }), carrier: varchar("carrier", { length: 80 }), shippingDetails: text("shippingDetails"), shippedAt: timestamp("shippedAt"), deliveredAt: timestamp("deliveredAt"), createdAt: timestamp("createdAt").defaultNow().notNull() });
+
+export const orderStatusHistory = mysqlTable("orderStatusHistory", { id: int("id").autoincrement().primaryKey(), orderId: int("orderId").notNull(), status: varchar("status", { length: 30 }).notNull(), note: text("note"), createdAt: timestamp("createdAt").defaultNow().notNull() });
+export const messages = mysqlTable("messages", { id: int("id").autoincrement().primaryKey(), quoteRequestId: int("quoteRequestId").notNull(), senderId: int("senderId").notNull(), body: text("body").notNull(), readAt: timestamp("readAt"), createdAt: timestamp("createdAt").defaultNow().notNull() });
+export const notifications = mysqlTable("notifications", { id: int("id").autoincrement().primaryKey(), userId: int("userId").notNull(), type: varchar("type", { length: 80 }).notNull(), refId: varchar("refId", { length: 120 }), title: varchar("title", { length: 180 }).notNull(), body: text("body"), readAt: timestamp("readAt"), createdAt: timestamp("createdAt").defaultNow().notNull() });
+
+export type User = typeof users.$inferSelect; export type InsertUser = typeof users.$inferInsert; export type Product = typeof products.$inferSelect; export type QuoteRequest = typeof quoteRequests.$inferSelect; export type QuoteRequestItem = typeof quoteRequestItems.$inferSelect; export type Quotation = typeof quotations.$inferSelect; export type Invoice = typeof invoices.$inferSelect; export type Payment = typeof payments.$inferSelect; export type Order = typeof orders.$inferSelect;

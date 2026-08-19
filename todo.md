@@ -1,0 +1,38 @@
+# Project TODO
+
+- [x] Preserve the existing Chadrey Wholesale visual language: dark-green primary brand, Inter typography, card-based layouts, responsive public navigation.
+- [x] Build the public product catalogue with categories, product detail pages, MOQ, colors, sizes, packaging, customization options, and product search/filter/sort foundations.
+- [ ] Add Manus OAuth customer authentication and role-based customer/admin access.
+- [x] Add multi-item quote requests with repeatable product lines and per-line quantity, color, size, packaging, customization, and notes.
+- [x] Add customer My Quotes dashboard with unique references and live quote-to-order status tracking.
+- [x] Add admin quote operations dashboard for incoming requests and line-item quotation creation.
+- [ ] Add quotation sending and customer quotation review flow.
+- [ ] Add invoice creation from accepted quotations with itemized amounts, due dates, and payment instructions.
+- [ ] Add Flutterwave hosted checkout and verified server-side webhook handling.
+- [ ] Add Stripe hosted checkout and verified server-side webhook handling.
+- [ ] Keep Flutterwave and Stripe as parallel payment options with provider-specific payment records.
+- [ ] Add automatic invoice/payment/order status updates after verified successful payment.
+- [ ] Add customer order tracking timeline from confirmation through production, shipping, and delivery.
+- [ ] Add admin fulfilment management with order status, tracking number, carrier, and shipping details.
+- [ ] Add customer email and in-app notifications for quote received, quotation sent, invoice issued, payment confirmed, and order shipped.
+- [ ] Add owner/admin push notifications only for new quote submissions and confirmed payments.
+- [x] Add database schema, secure procedures, and tests for all core entities and status transitions.
+- [ ] Verify responsive UI, browser flows, payment webhook safeguards, and production build before checkpoint.
+- [ ] Keep this checklist current as implementation progresses; do not delete completed history items.
+
+- [ ] Defer Stripe checkout and Stripe webhooks until the user configures Stripe credentials; keep the payment model extensible for later parallel provider support.
+- [ ] Prioritize Flutterwave-ready payment boundaries and a bank-transfer/manual-verification fallback without exposing fake successful payments.
+- [ ] Implement the full quote lifecycle including accepted, declined, rejected, expired, overdue, cancelled, paid, processing, shipped, and delivered states.
+- [ ] Add customer notification bell/menu and admin notification handling while restricting owner push alerts to new quote submissions and confirmed payments.
+- [ ] Add customer/admin messaging entry points for quote changes, invoice questions, and support conversations.
+- [ ] Add draft quote requests, saved products, comparison, FAQ, addresses, account settings, and product/admin management after the core loop.
+
+- [x] Implement a real product detail page with MOQ, colors, sizes, packaging, customization, and product-to-quote prefill flow.
+- [ ] Add per-line notes to multi-item quote requests and wire quote submission to backend persistence.
+- [ ] Connect My Quotes to backend data so references and status timelines are live per user.
+- [ ] Implement admin quotation creation/editing UI with real line-item pricing actions backed by procedures.
+- [ ] Add full tRPC procedures and tests for quotations, invoices, payments, orders, messages, notifications, and enforced status transitions.
+- [ ] Implement Flutterwave webhook handlers and safeguards, then test them.
+- [x] Run and verify a production build before checkpoint.
+- [x] Wire QuoteRequest to parse product, quantity, color, size, packaging, and customization URL parameters and prefill the first quote line.
+- [ ] Add a test or verification step covering product-detail to quote prefill behavior.

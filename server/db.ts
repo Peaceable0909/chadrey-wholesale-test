@@ -1,92 +1,17 @@
-import { eq } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { InsertUser, users } from "../drizzle/schema";
-import { ENV } from './_core/env';
+import { InsertUser, users, products, quoteRequests, quoteRequestItems, quotations, invoices, orders, notifications, type Product } from "../drizzle/schema";
+import { ENV } from "./_core/env";
 
 let _db: ReturnType<typeof drizzle> | null = null;
+export async function getDb() { if (!_db && process.env.DATABASE_URL) { try { _db = drizzle(process.env.DATABASE_URL); } catch (error) { console.warn("[Database] Failed to connect:", error); _db = null; } } return _db; }
 
-// Lazily create the drizzle instance so local tooling can run without a DB.
-export async function getDb() {
-  if (!_db && process.env.DATABASE_URL) {
-    try {
-      _db = drizzle(process.env.DATABASE_URL);
-    } catch (error) {
-      console.warn("[Database] Failed to connect:", error);
-      _db = null;
-    }
-  }
-  return _db;
-}
-
-export async function upsertUser(user: InsertUser): Promise<void> {
-  if (!user.openId) {
-    throw new Error("User openId is required for upsert");
-  }
-
-  const db = await getDb();
-  if (!db) {
-    console.warn("[Database] Cannot upsert user: database not available");
-    return;
-  }
-
-  try {
-    const values: InsertUser = {
-      openId: user.openId,
-    };
-    const updateSet: Record<string, unknown> = {};
-
-    const textFields = ["name", "email", "loginMethod"] as const;
-    type TextField = (typeof textFields)[number];
-
-    const assignNullable = (field: TextField) => {
-      const value = user[field];
-      if (value === undefined) return;
-      const normalized = value ?? null;
-      values[field] = normalized;
-      updateSet[field] = normalized;
-    };
-
-    textFields.forEach(assignNullable);
-
-    if (user.lastSignedIn !== undefined) {
-      values.lastSignedIn = user.lastSignedIn;
-      updateSet.lastSignedIn = user.lastSignedIn;
-    }
-    if (user.role !== undefined) {
-      values.role = user.role;
-      updateSet.role = user.role;
-    } else if (user.openId === ENV.ownerOpenId) {
-      values.role = 'admin';
-      updateSet.role = 'admin';
-    }
-
-    if (!values.lastSignedIn) {
-      values.lastSignedIn = new Date();
-    }
-
-    if (Object.keys(updateSet).length === 0) {
-      updateSet.lastSignedIn = new Date();
-    }
-
-    await db.insert(users).values(values).onDuplicateKeyUpdate({
-      set: updateSet,
-    });
-  } catch (error) {
-    console.error("[Database] Failed to upsert user:", error);
-    throw error;
-  }
-}
-
-export async function getUserByOpenId(openId: string) {
-  const db = await getDb();
-  if (!db) {
-    console.warn("[Database] Cannot get user: database not available");
-    return undefined;
-  }
-
-  const result = await db.select().from(users).where(eq(users.openId, openId)).limit(1);
-
-  return result.length > 0 ? result[0] : undefined;
-}
-
-// TODO: add feature queries here as your schema grows.
+export async function upsertUser(user: InsertUser): Promise<void> { if (!user.openId) throw new Error("User openId is required for upsert"); const db = await getDb(); if (!db) return; const values: InsertUser = { openId: user.openId, name: user.name ?? null, email: user.email ?? null, loginMethod: user.loginMethod ?? null, lastSignedIn: user.lastSignedIn ?? new Date(), role: user.role ?? (user.openId === ENV.ownerOpenId ? "admin" : "user") }; await db.insert(users).values(values).onDuplicateKeyUpdate({ set: { name: values.name, email: values.email, loginMethod: values.loginMethod, role: values.role, lastSignedIn: values.lastSignedIn } }); }
+export async function getUserByOpenId(openId: string) { const db = await getDb(); if (!db) return undefined; const result = await db.select().from(users).where(eq(users.openId, openId)).limit(1); return result[0]; }
+export async function listProducts(): Promise<Product[]> { const db = await getDb(); if (!db) return []; return db.select().from(products).where(eq(products.isActive, 1)).orderBy(desc(products.createdAt)); }
+export async function createQuote(input: { customerId: number; ref: string; notes?: string; items: Array<{ productId: number; quantity: number; color: string; size: string; packaging: string; customization: string }> }) { const db = await getDb(); if (!db) throw new Error("Database unavailable"); const result = await db.insert(quoteRequests).values({ customerId: input.customerId, ref: input.ref, notes: input.notes ?? null, status: "pending" }); const quoteId = Number(result[0].insertId); if (input.items.length) await db.insert(quoteRequestItems).values(input.items.map(item => ({ ...item, quoteRequestId: quoteId }))); return quoteId; }
+export async function listCustomerQuotes(customerId: number) { const db = await getDb(); if (!db) return []; return db.select().from(quoteRequests).where(eq(quoteRequests.customerId, customerId)).orderBy(desc(quoteRequests.createdAt)); }
+export async function listAdminQuotes() { const db = await getDb(); if (!db) return []; return db.select().from(quoteRequests).orderBy(desc(quoteRequests.createdAt)); }
+export async function markQuoteStatus(id: number, status: "quoted" | "accepted" | "declined" | "rejected" | "invoiced" | "paid" | "processing" | "shipped" | "delivered" | "cancelled", reason?: string) { const db = await getDb(); if (!db) throw new Error("Database unavailable"); await db.update(quoteRequests).set({ status, rejectionReason: reason ?? null }).where(eq(quoteRequests.id, id)); }
+export async function createNotification(userId: number, type: string, title: string, body: string, refId?: string) { const db = await getDb(); if (!db) return; await db.insert(notifications).values({ userId, type, title, body, refId: refId ?? null }); }
+export async function getAdminCounts() { const db = await getDb(); if (!db) return { quoteRequests: 0, quotations: 0, invoices: 0, orders: 0 }; const [q, qt, inv, ord] = await Promise.all([db.select().from(quoteRequests), db.select().from(quotations), db.select().from(invoices), db.select().from(orders)]); return { quoteRequests: q.length, quotations: qt.length, invoices: inv.length, orders: ord.length }; }
