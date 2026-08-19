@@ -61,4 +61,4 @@
 - [ ] Add integration-style tests for /api/webhooks/flutterwave covering a verified successful payment that persists the payment and creates or updates the order.
 - [ ] Add a webhook replay test asserting duplicate handling produces no duplicate payment or order.
 - [ ] Add a webhook notification test asserting owner notification fires only after verified successful payment processing.
-- [ ] Push the active Chadrey Wholesale project to https://github.com/Peaceable0909/chadrey-wholesale-test on the main branch and verify the remote commit.
+- [x] Push the active Chadrey Wholesale project to https://github.com/Peaceable0909/chadrey-wholesale-test on the main branch and verify the remote commit.
