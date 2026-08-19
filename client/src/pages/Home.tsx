@@ -1,32 +1,37 @@
+import { useEffect, useRef, useState } from "react";
+import { ArrowRight, Bell, Check, ChevronDown, Menu, PackageCheck, ShieldCheck, Sparkles, Truck, X } from "lucide-react";
 import { Link } from "wouter";
-import { ArrowRight, Bell, Check, ChevronDown, PackageCheck, ShieldCheck, Sparkles, Truck } from "lucide-react";
 
+const heroImage = "/manus-storage/chadrey-logistics-hero_bd3dc1a2.jpg";
 const categories = [
-  { name: "Apparel & Clothing", count: "120+ products", mark: "01" },
-  { name: "Bags & Accessories", count: "80+ products", mark: "02" },
-  { name: "Footwear", count: "60+ products", mark: "03" },
-  { name: "Home & Lifestyle", count: "70+ products", mark: "04" },
+  { name: "Apparel & Textiles", count: "120+ products", mark: "01", tone: "sage" },
+  { name: "Home & Living", count: "90+ products", mark: "02", tone: "gold" },
+  { name: "Packaging & Supplies", count: "150+ products", mark: "03", tone: "green" },
+  { name: "Electronics & Accessories", count: "80+ products", mark: "04", tone: "slate" },
 ];
 
 function Header() {
-  return (
-    <header className="site-header">
-      <Link href="/" className="brand"><span className="brand-mark">C</span><span>CHADREY<small>WHOLESALE</small></span></Link>
-      <nav className="main-nav"><Link href="/">Home</Link><Link href="/products">Products</Link><Link href="/quote">Request a Quote</Link><Link href="/dashboard">My Workspace</Link><Link href="/admin">Admin</Link></nav>
-      <div className="header-actions"><button className="icon-button" aria-label="Notifications"><Bell size={17}/><i /></button><Link href="/dashboard" className="avatar">AB</Link></div>
-    </header>
-  );
+  const [open, setOpen] = useState(false);
+  const menuButtonRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => { const onKeyDown = (event: KeyboardEvent) => { if (event.key === "Escape" && open) { setOpen(false); menuButtonRef.current?.focus(); } }; window.addEventListener("keydown", onKeyDown); return () => window.removeEventListener("keydown", onKeyDown); }, [open]);
+  const closeMenu = () => { setOpen(false); menuButtonRef.current?.focus(); };
+  return <header className="site-header reference-header">
+    <Link href="/" className="brand"><span className="brand-mountain">⌃</span><span>Chadrey<strong>Wholesale</strong></span></Link>
+    <nav id="primary-navigation" aria-label="Primary navigation" className={`main-nav ${open ? "is-open" : ""}`}>
+      <Link href="/" onClick={closeMenu}>Home</Link><Link href="/products" onClick={closeMenu}>Products</Link><Link href="/quote" onClick={closeMenu}>Request a Quote</Link><Link href="/how-it-works" onClick={closeMenu}>How It Works</Link><Link href="/dashboard" onClick={closeMenu}>My Quotes</Link><Link href="/contact" onClick={closeMenu}>Contact</Link>
+    </nav>
+    <div className="header-actions"><button className="icon-button header-bell" aria-label="Notifications"><Bell size={18}/><i>3</i></button><Link href="/dashboard" className="avatar">CW</Link><ChevronDown size={15} className="header-chevron"/><button ref={menuButtonRef} className="mobile-menu-button" onClick={() => setOpen(!open)} aria-expanded={open} aria-controls="primary-navigation" aria-label={open ? "Close primary navigation" : "Open primary navigation"}>{open ? <X size={22}/> : <Menu size={22}/>}</button></div>
+  </header>;
 }
 
 export default function Home() {
-  return <div className="app-shell">
-    <Header />
-    <main>
-      <section className="hero-section"><div className="hero-copy"><span className="eyebrow">B2B WHOLESALE MARKETPLACE</span><h1>Source quality products.<br/><em>Get the best prices.</em></h1><p>From product discovery to delivery, manage your wholesale orders in one calm, connected workspace.</p><div className="hero-actions"><Link className="button button-primary" href="/quote">Request a quote <ArrowRight size={16}/></Link><Link className="button button-secondary" href="/products">Browse products</Link></div><div className="trust-list"><span><ShieldCheck size={16}/> Verified suppliers</span><span><Sparkles size={16}/> Custom solutions</span><span><Truck size={16}/> Reliable delivery</span></div></div><div className="hero-art"><div className="art-grid"/><div className="crate crate-one">APPAREL<span>500 units</span></div><div className="crate crate-two">PRIVATE LABEL<span>MOQ 50</span></div><div className="hero-badge"><strong>150+</strong><span>businesses sourcing smarter</span></div></div></section>
-      <section className="section-block"><div className="section-heading"><div><span className="eyebrow">EXPLORE THE CATALOGUE</span><h2>Built for the way you buy wholesale.</h2></div><Link href="/products" className="text-link">View all products <ArrowRight size={15}/></Link></div><div className="category-grid">{categories.map((category) => <Link href="/products" className="category-card" key={category.name}><span className="category-mark">{category.mark}</span><div><h3>{category.name}</h3><p>{category.count}</p></div><ArrowRight size={17}/></Link>)}</div></section>
-      <section className="process-section"><div className="process-intro"><span className="eyebrow eyebrow-light">A CLEARER PROCESS</span><h2>From request<br/>to delivery.</h2><p>Every step, one place. Track conversations, documents, payments, and fulfilment without losing the thread.</p><Link href="/quote" className="button button-light">Start a request <ArrowRight size={16}/></Link></div><div className="process-steps">{[{n:"01", t:"Browse products", d:"Choose from our curated catalogue and product variants."},{n:"02", t:"Request a quote", d:"Bundle multiple items and share your exact requirements."},{n:"03", t:"Review & accept", d:"Receive transparent line-item pricing from our team."},{n:"04", t:"Track delivery", d:"Follow payment, production, shipping, and delivery."}].map((step) => <div className="process-step" key={step.n}><span>{step.n}</span><h3>{step.t}</h3><p>{step.d}</p></div>)}</div></section>
-      <section className="section-block feature-strip"><div><span className="eyebrow">ONE WORKSPACE</span><h2>Your quote is more than a price.</h2><p>Keep every request, quotation, invoice, message, and shipment status connected to the same order record.</p></div><div className="feature-points"><p><Check size={17}/> Live status timeline from pending to delivered</p><p><Check size={17}/> Multi-item requests with per-product requirements</p><p><Check size={17}/> Clear documents for your team and your customers</p></div></section>
-    </main>
-    <footer className="site-footer"><span>© 2026 Chadrey Wholesale</span><span>Quality sourcing, made clearer.</span><div><Link href="/products">Products</Link><Link href="/quote">Request a quote</Link><Link href="/dashboard">Workspace</Link></div></footer>
-  </div>;
+  return <div className="app-shell reference-home"><Header /><main>
+    <section className="reference-hero">
+      <div className="reference-hero-copy"><span className="reference-pill"><span/> B2B WHOLESALE MARKETPLACE</span><h1>Power your business<br/>with <span>quality products</span><br/>at wholesale prices.</h1><p>Source premium products, request custom quotes, and build lasting partnerships that grow your business.</p><div className="hero-actions"><Link className="button button-primary" href="/quote"><PackageCheck size={17}/> Request a Quote</Link><Link className="button button-secondary" href="/products"><span className="button-grid-icon">⊞</span> Browse Products</Link></div><div className="trust-list reference-trust"><span><ShieldCheck size={21}/><b>Trusted Suppliers</b><small>Verified & reliable partners</small></span><span><Sparkles size={21}/><b>Competitive Pricing</b><small>Best value for your business</small></span><span><Check size={21}/><b>Custom Solutions</b><small>Tailored to your needs</small></span><span><Truck size={21}/><b>Reliable Delivery</b><small>On-time, every time</small></span></div></div>
+      <div className="reference-hero-image" style={{backgroundImage:`url(${heroImage})`}}><div className="hero-image-overlay"/><div className="hero-business-badge"><strong>150+</strong><span>Growing businesses<br/>with Chadrey Wholesale</span></div></div>
+    </section>
+    <section className="reference-section categories-section"><div className="section-heading"><div><span className="eyebrow">EXPLORE OUR RANGE</span><h2>Popular Categories</h2></div><Link href="/products" className="text-link">View All Products <ArrowRight size={16}/></Link></div><div className="reference-category-grid">{categories.map((category) => <Link href={`/products?category=${encodeURIComponent(category.name)}`} className={`reference-category-card ${category.tone}`} key={category.name}><div className="category-visual"><span>{category.mark}</span><div className="category-visual-lines"/></div><div className="category-card-copy"><h3>{category.name}</h3><p>{category.count}</p><span className="category-arrow"><ArrowRight size={17}/></span></div></Link>)}</div><div className="category-dots"><i className="active"/><i/><i/><i/></div></section>
+    <section className="reference-process"><div className="reference-process-title"><span className="eyebrow eyebrow-light">SIMPLE FROM START TO FINISH</span><h2>How It Works</h2><p>A clear wholesale journey with one connected workspace for every request, quote, and delivery.</p></div><div className="reference-process-grid">{[{n:"1",icon:"⌕",t:"Browse Products",d:"Explore our wide range of products and categories."},{n:"2",icon:"▤",t:"Request a Quote",d:"Submit your requirements and quantity details easily."},{n:"3",icon:"✉",t:"Receive Quotation",d:"Get competitive quotes from our trusted suppliers."},{n:"4",icon:"🛒",t:"Confirm & Order",d:"Confirm the best offer and place your order with confidence."}].map((step) => <div className="reference-process-step" key={step.n}><span className="process-number">{step.n}</span><span className="process-icon">{step.icon}</span><h3>{step.t}</h3><p>{step.d}</p></div>)}</div></section>
+    <section className="reference-cta"><div className="cta-box-illustration"><span>◒</span><span>▰</span><span>▰</span></div><div><span className="eyebrow">READY WHEN YOU ARE</span><h2>Ready to grow your business?</h2><p>Get started today and unlock wholesale sourcing tailored to your needs.</p></div><Link href="/quote" className="button button-primary">Request a Quote Now <ArrowRight size={16}/></Link></section>
+  </main><footer className="reference-footer"><div className="footer-brand"><span className="brand-mountain">⌃</span><div><strong>Chadrey Wholesale</strong><small>Your trusted partner for wholesale success.</small></div></div><div className="footer-socials"><span>in</span><span>f</span><span>◎</span><span>✉</span></div><div className="footer-bottom"><span>© 2026 Chadrey Wholesale. All rights reserved.</span><Link href="/admin">Admin View ↗</Link></div></footer></div>;
 }

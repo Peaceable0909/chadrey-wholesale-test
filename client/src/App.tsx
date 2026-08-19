@@ -15,6 +15,8 @@ import QuoteMessages from "./pages/QuoteMessages";
 import OrderTracking from "./pages/OrderTracking";
 import AdminFulfilment from "./pages/AdminFulfilment";
 import InvoicePayment from "./pages/InvoicePayment";
+import HowItWorks from "./pages/HowItWorks";
+import Contact from "./pages/Contact";
 import NotFound from "./pages/NotFound";
 
 function Router() {
@@ -32,6 +34,8 @@ function Router() {
       <Route path="/orders" component={OrderTracking} />
       <Route path="/admin/fulfilment" component={AdminFulfilment} />
       <Route path="/pay" component={InvoicePayment} />
+      <Route path="/how-it-works" component={HowItWorks} />
+      <Route path="/contact" component={Contact} />
       <Route path="/404" component={NotFound} />
       <Route component={NotFound} />
     </Switch>

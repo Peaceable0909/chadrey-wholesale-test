@@ -62,3 +62,12 @@
 - [ ] Add a webhook replay test asserting duplicate handling produces no duplicate payment or order.
 - [ ] Add a webhook notification test asserting owner notification fires only after verified successful payment processing.
 - [x] Push the active Chadrey Wholesale project to https://github.com/Peaceable0909/chadrey-wholesale-test on the main branch and verify the remote commit.
+
+- [x] Rework the homepage to match the supplied reference: deep-green header, branded navigation, split hero, wholesale value proposition, logistics imagery, category cards, process section, CTA band, and footer.
+- [x] Replace prototype-oriented homepage copy with production-oriented B2B wholesale messaging and real operational calls to action.
+- [x] Add a responsive mobile navigation pattern with accessible menu controls and preserved customer/admin entry points.
+- [ ] Make hero, category cards, process steps, CTA, catalogue, quote form, dashboards, and payment/order pages responsive across desktop, tablet, and mobile breakpoints.
+- [x] Add production-style brand assets and image treatment without storing local media inside the web project bundle.
+- [ ] Verify the redesign with typecheck, tests, production build, and desktop/mobile visual checks.
+- [x] Implement or remove the homepage `/how-it-works` and `/contact` navigation destinations so every public link resolves to a real page.
+- [x] Add mobile menu accessibility semantics, including `aria-expanded`, `aria-controls`, keyboard-safe focus behavior, and a clear accessible label.
