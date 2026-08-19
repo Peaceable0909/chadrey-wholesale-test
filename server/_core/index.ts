@@ -8,7 +8,7 @@ import { registerStorageProxy } from "./storageProxy";
 import { appRouter } from "../routers";
 import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
-import { verifyFlutterwaveWebhookHash, normalizeFlutterwaveEvent, verifyFlutterwaveTransaction } from "../flutterwave";
+import { verifyFlutterwaveWebhookHash, normalizeFlutterwaveEvent, paymentMatchesInvoice, verifyFlutterwaveTransaction } from "../flutterwave";
 import { createPaidOrder, getInvoiceById, getPaymentByTransaction, recordPayment } from "../db";
 import { notifyOwner } from "./notification";
 
@@ -51,7 +51,7 @@ async function startServer() {
     const invoice = await getInvoiceById(invoiceId);
     if (!invoice) return res.status(404).json({ ok: false, error: "Invoice not found" });
     const verified = await verifyFlutterwaveTransaction(event.transactionId);
-    if (verified.tx_ref !== event.txRef || verified.currency !== invoice.currency || Number(verified.amount) < Number(invoice.total)) return res.status(400).json({ ok: false, error: "Payment does not match invoice" });
+    if (!paymentMatchesInvoice({ txRef: verified.tx_ref, expectedTxRef: event.txRef, amount: Number(verified.amount), expectedAmount: Number(invoice.total), currency: verified.currency, expectedCurrency: invoice.currency })) return res.status(400).json({ ok: false, error: "Payment does not match invoice" });
     await recordPayment({ invoiceId, provider: "flutterwave", transactionId: String(verified.id), providerReference: verified.tx_ref, amount: String(verified.amount), currency: verified.currency, method: verified.payment_type, rawPayload: req.body });
     const orderId = await createPaidOrder(invoiceId);
     await notifyOwner({ title: "Payment confirmed", content: `Flutterwave verified payment for invoice ${invoiceId}; order ${orderId} is processing.` });

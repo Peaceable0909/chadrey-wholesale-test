@@ -12,6 +12,8 @@ import AdminDashboard from "./pages/AdminDashboard";
 import AdminQuoteComposer from "./pages/AdminQuoteComposer";
 import QuotationReview from "./pages/QuotationReview";
 import QuoteMessages from "./pages/QuoteMessages";
+import OrderTracking from "./pages/OrderTracking";
+import AdminFulfilment from "./pages/AdminFulfilment";
 import NotFound from "./pages/NotFound";
 
 function Router() {
@@ -26,6 +28,8 @@ function Router() {
       <Route path="/admin/quote" component={AdminQuoteComposer} />
       <Route path="/quotation" component={QuotationReview} />
       <Route path="/messages" component={QuoteMessages} />
+      <Route path="/orders" component={OrderTracking} />
+      <Route path="/admin/fulfilment" component={AdminFulfilment} />
       <Route path="/404" component={NotFound} />
       <Route component={NotFound} />
     </Switch>

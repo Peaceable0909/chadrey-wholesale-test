@@ -14,6 +14,10 @@ export function normalizeFlutterwaveEvent(payload: any): FlutterwaveEvent {
   return { event: payload?.event ?? "unknown", transactionId: data.id ? String(data.id) : undefined, txRef: data.tx_ref ? String(data.tx_ref) : undefined, status: data.status ? String(data.status) : undefined, amount: typeof data.amount === "number" ? data.amount : Number(data.amount || 0), currency: data.currency ? String(data.currency) : undefined, raw: payload };
 }
 
+export function paymentMatchesInvoice(input: { txRef?: string; expectedTxRef: string; amount: number; expectedAmount: number; currency?: string; expectedCurrency: string }) { return input.txRef === input.expectedTxRef && input.currency === input.expectedCurrency && input.amount >= input.expectedAmount; }
+
+export async function createFlutterwaveCheckout(input: { amount: number; currency: string; txRef: string; customerEmail: string; customerName?: string; redirectUrl: string }) { const secret = process.env.FLUTTERWAVE_SECRET_KEY; if (!secret) throw new Error("FLUTTERWAVE_SECRET_KEY is not configured"); const response = await fetch("https://api.flutterwave.com/v3/payments", { method: "POST", headers: { Authorization: `Bearer ${secret}`, "Content-Type": "application/json", Accept: "application/json" }, body: JSON.stringify({ tx_ref: input.txRef, amount: input.amount, currency: input.currency, redirect_url: input.redirectUrl, customer: { email: input.customerEmail, name: input.customerName || "Chadrey Customer" }, customizations: { title: "Chadrey Wholesale payment", description: `Payment for ${input.txRef}` } }) }); if (!response.ok) throw new Error(`Flutterwave checkout failed with ${response.status}`); const body = await response.json() as any; if (body?.status !== "success" || !body?.data?.link) throw new Error("Flutterwave did not return a checkout link"); return String(body.data.link); }
+
 export async function verifyFlutterwaveTransaction(transactionId: string) {
   const secret = process.env.FLUTTERWAVE_SECRET_KEY;
   if (!secret) throw new Error("FLUTTERWAVE_SECRET_KEY is not configured");

@@ -11,9 +11,9 @@
 - [ ] Add Flutterwave hosted checkout and verified server-side webhook handling.
 - [ ] Add Stripe hosted checkout and verified server-side webhook handling.
 - [ ] Keep Flutterwave and Stripe as parallel payment options with provider-specific payment records.
-- [ ] Add automatic invoice/payment/order status updates after verified successful payment.
-- [ ] Add customer order tracking timeline from confirmation through production, shipping, and delivery.
-- [ ] Add admin fulfilment management with order status, tracking number, carrier, and shipping details.
+- [x] Add automatic invoice/payment/order status updates after verified successful payment.
+- [x] Add customer order tracking timeline from confirmation through production, shipping, and delivery.
+- [x] Add admin fulfilment management with order status, tracking number, carrier, and shipping details.
 - [ ] Add customer email and in-app notifications for quote received, quotation sent, invoice issued, payment confirmed, and order shipped.
 - [ ] Add owner/admin push notifications only for new quote submissions and confirmed payments.
 - [x] Add database schema, secure procedures, and tests for all core entities and status transitions.
@@ -46,3 +46,8 @@
 - [ ] Add customer and admin messaging UI/thread views backed by the existing messages procedure.
 - [ ] Replace hardcoded dashboard timeline and placeholder quote text with real per-user quote/order status data.
 - [ ] Upgrade the admin quotation composer to support editable line-item pricing, quantities, totals, and quotation edits.
+- [ ] Attach and deliver the Flutterwave/Supabase setup guide to the user at the final completed milestone.
+- [ ] Update the plain-text guide at project end to reflect the completed workflow and verified production behavior.
+- [ ] Connect the /orders tracking page to persisted per-customer order data and render real status, carrier, tracking number, and milestone timestamps.
+- [ ] Build a real admin fulfilment management UI that loads live orders and allows editing status, carrier, tracking number, and shipping details instead of using hardcoded values.
+- [ ] Add tests or verification for successful paid-order creation feeding real order tracking data into the customer tracking page.

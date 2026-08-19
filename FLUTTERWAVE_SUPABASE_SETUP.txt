@@ -1,0 +1,59 @@
+CHADREY WHOLESALE — SUPABASE AND FLUTTERWAVE SETUP GUIDE
+
+Purpose
+
+This guide explains the configuration required for the Chadrey Wholesale Flutterwave payment workflow. Stripe is intentionally deferred and is not required for the current implementation.
+
+1. Add the server secrets
+
+In the project’s secure environment/secrets manager, add the following variables. If Supabase is being used as the source of truth for application secrets, store the values in Supabase project secrets or the connected deployment secret store; do not commit them to the repository and do not expose them in client-side code.
+
+FLUTTERWAVE_SECRET_KEY
+Purpose: Server-side transaction verification through the Flutterwave API.
+Value: Use the Flutterwave Secret Key from the Flutterwave Dashboard. Use the test key for sandbox testing and the live key only for production.
+Visibility: Server-only. Never use this variable in React or any VITE_ variable.
+
+FLUTTERWAVE_WEBHOOK_HASH
+Purpose: Verification of the verif-hash header sent with Flutterwave webhook deliveries.
+Value: Use the webhook secret/hash configured in Flutterwave.
+Visibility: Server-only. Never expose this variable in browser code.
+
+2. Configure the Flutterwave webhook
+
+Set the Flutterwave webhook URL to:
+
+https://YOUR-PUBLISHED-CHADREY-DOMAIN/api/webhooks/flutterwave
+
+For a local or temporary environment, use a secure public HTTPS tunnel only for testing. The deployed application should receive the webhook over HTTPS.
+
+The endpoint expects Flutterwave’s verif-hash header. Requests with a missing or incorrect hash are rejected. The endpoint accepts only events with an invoice reference in the format invoice-N, where N is the internal invoice ID.
+
+3. Payment verification sequence
+
+The application does not trust the webhook payload alone. It validates the webhook hash, extracts the transaction reference, checks that the invoice exists, calls Flutterwave’s server-side transaction verification endpoint, confirms the transaction reference, currency, and amount, checks for duplicate transaction records, persists the payment, marks the invoice paid, creates the processing order, and sends the owner alert for the confirmed payment event.
+
+4. Testing checklist
+
+Use Flutterwave test mode first. Create a quotation and invoice, use the resulting invoice reference in the hosted checkout flow, and confirm that the webhook reaches the published application. Confirm that an invalid verif-hash returns HTTP 401. Confirm that a valid successful event creates one payment record and one processing order. Replay the same webhook and confirm that it returns a duplicate response without creating another order. Confirm that the owner alert is sent only after server-side verification succeeds.
+
+5. Security requirements
+
+Do not put either secret in client/src, client/public, HTML, browser storage, GitHub, or any VITE_ variable. Rotate keys if they are ever exposed. Keep Flutterwave test and live credentials separate. Configure the webhook URL separately for test and live environments. Do not treat a browser redirect or a client-side success message as proof of payment; the server-side verification path is authoritative.
+
+6. Stripe status
+
+Stripe is deferred. No Stripe secret, publishable key, webhook signing secret, or Stripe checkout route is required for this milestone. Stripe can be added later as a parallel payment provider after Stripe credentials are configured in the project settings.
+
+7. Relevant application routes
+
+Customer quote request: /quote
+Customer workspace: /dashboard
+Quotation review: /quotation?quoteId=QUOTE_REQUEST_ID
+Quote conversation: /messages?quoteId=QUOTE_REQUEST_ID
+Admin workspace: /admin
+Admin quotation composer: /admin/quote?quoteId=QUOTE_REQUEST_ID
+Flutterwave webhook: /api/webhooks/flutterwave
+
+8. Final deployment note
+
+After adding the secrets, restart or redeploy the application so the server receives the updated environment values. Verify the webhook in Flutterwave’s dashboard and perform one sandbox transaction before switching to live credentials.

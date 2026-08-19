@@ -1,10 +1,11 @@
 import { z } from "zod";
+import { createFlutterwaveCheckout } from "./flutterwave";
 import { COOKIE_NAME } from "@shared/const";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { adminProcedure, protectedProcedure, publicProcedure, router } from "./_core/trpc";
 import { notifyOwner } from "./_core/notification";
-import { createInvoice, createMessage, createNotification, createPaidOrder, createQuotation, createQuote, getAdminCounts, getQuotationForCustomer, listAdminQuotes, listCustomerQuotes, listNotifications, listProducts, markQuoteStatus, setQuotationStatus, updateOrderStatus } from "./db";
+import { createInvoice, createMessage, createNotification, createPaidOrder, createQuotation, createQuote, getAdminCounts, getQuotationForCustomer, listAdminOrders, listAdminQuotes, listCustomerOrders, listCustomerQuotes, listNotifications, listProducts, markQuoteStatus, setQuotationStatus, updateOrderStatus } from "./db";
 
 const quoteItem = z.object({ productId: z.number().int().positive(), quantity: z.number().int().positive(), color: z.string().min(1), size: z.string().min(1), packaging: z.string().min(1), customization: z.string().min(1) });
 
@@ -27,6 +28,8 @@ export const appRouter = router({
   }),
   notifications: router({ mine: protectedProcedure.query(({ ctx }) => listNotifications(ctx.user.id)) }),
   messages: router({ create: protectedProcedure.input(z.object({ quoteRequestId: z.number().int().positive(), body: z.string().min(1).max(5000) })).mutation(async ({ ctx, input }) => ({ id: await createMessage({ quoteRequestId: input.quoteRequestId, senderId: ctx.user.id, body: input.body }) })) }),
+  orders: router({ mine: protectedProcedure.query(({ ctx }) => listCustomerOrders(ctx.user.id)), adminList: adminProcedure.query(() => listAdminOrders()) }),
+  payments: router({ createFlutterwaveCheckout: protectedProcedure.input(z.object({ invoiceId: z.number().int().positive(), amount: z.number().positive(), currency: z.string().length(3), redirectUrl: z.string().url() })).mutation(async ({ ctx, input }) => ({ link: await createFlutterwaveCheckout({ amount: input.amount, currency: input.currency, txRef: `invoice-${input.invoiceId}`, customerEmail: ctx.user.email || "", customerName: ctx.user.name || undefined, redirectUrl: input.redirectUrl }) })) }),
 });
 
 export type AppRouter = typeof appRouter;
