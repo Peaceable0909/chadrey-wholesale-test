@@ -71,3 +71,11 @@
 - [ ] Verify the redesign with typecheck, tests, production build, and desktop/mobile visual checks.
 - [x] Implement or remove the homepage `/how-it-works` and `/contact` navigation destinations so every public link resolves to a real page.
 - [x] Add mobile menu accessibility semantics, including `aria-expanded`, `aria-controls`, keyboard-safe focus behavior, and a clear accessible label.
+
+- [x] Diagnose why https://chadrey-wholesale-test.vercel.app/ is not working and document the deployment/runtime root cause.
+- [x] Apply and verify the smallest safe fix for the Vercel deployment if the issue is in the project configuration or build output.
+
+- [x] Add Vercel configuration for the Vite frontend output at `dist/public` with the project build command.
+- [ ] Verify the Vercel deployment artifact and push the deployment configuration fix to the GitHub main branch.
+- [ ] Redeploy the project on Vercel after adding `vercel.json`, then verify the live root URL serves the built frontend instead of raw server source.
+- [ ] Recheck key public routes and asset loading on the live Vercel deployment after the config change.
