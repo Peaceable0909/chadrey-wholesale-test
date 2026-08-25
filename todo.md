@@ -113,4 +113,4 @@
 - [x] Remove visible Manus sign-in wording from customer, admin, payment, and shared authentication entry points.
 - [x] Ensure configured Firebase environments never redirect users to the Manus OAuth portal.
 
-- [ ] Redeploy the current Firebase-only authentication changes to the connected Vercel production project and verify `/dashboard` no longer displays the stale Manus sign-in screen.
+- [x] Redeploy the current Firebase-only authentication changes to the connected Vercel production project and verify `/dashboard` no longer displays the stale Manus sign-in screen.
