@@ -57,7 +57,7 @@ The repository includes `firestore.rules` and `storage.rules`. Review the rules 
 
 ## 6. Firebase Authentication request flow
 
-The browser signs in with Firebase email/password authentication. The Firebase client obtains an ID token, and the tRPC client sends it as `Authorization: Bearer <ID_TOKEN>`. Cloud Run verifies the token with Firebase Admin SDK before resolving the application user and role. Logout must sign out the Firebase client session; legacy cookie cleanup remains only for the transition period.
+The browser supports Firebase email/password authentication and Google popup sign-in. Enable Google from **Authentication → Sign-in method → Google → Enable**, then add the production domain under **Authentication → Settings → Authorized domains**. The browser obtains a Firebase ID token, and the tRPC client sends it as `Authorization: Bearer <ID_TOKEN>`. Cloud Run verifies the token with Firebase Admin SDK before resolving the application user and role. The Android SHA-1 requirement does not apply to this web sign-in flow. Logout must sign out the Firebase client session; legacy cookie cleanup remains only for the transition period.
 
 ## 7. Flutterwave webhook configuration
 

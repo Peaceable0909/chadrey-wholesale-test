@@ -114,3 +114,6 @@
 - [x] Ensure configured Firebase environments never redirect users to the Manus OAuth portal.
 
 - [x] Redeploy the current Firebase-only authentication changes to the connected Vercel production project and verify `/dashboard` no longer displays the stale Manus sign-in screen.
+
+- [x] Add Google sign-in as a second Firebase Authentication option alongside email/password login.
+- [x] Add authentication tests or pure helper coverage for Google provider availability and error handling.

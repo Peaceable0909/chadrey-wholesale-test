@@ -2,10 +2,13 @@ import { FormEvent, useState } from "react";
 import { Link, useLocation } from "wouter";
 import {
   createUserWithEmailAndPassword,
+  GoogleAuthProvider,
   signInWithEmailAndPassword,
+  signInWithPopup,
   updateProfile,
 } from "firebase/auth";
-import { firebaseAuth } from "@/lib/firebase";
+import { firebaseAuth, isFirebaseConfigured, isGoogleSignInAvailable } from "@/lib/firebase";
+import { formatFirebaseAuthError } from "@/lib/authErrors";
 
 export default function Login() {
   const [, navigate] = useLocation();
@@ -15,6 +18,7 @@ export default function Login() {
   const [name, setName] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [googleBusy, setGoogleBusy] = useState(false);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -30,9 +34,23 @@ export default function Login() {
       }
       navigate("/dashboard");
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message.replace("Firebase: ", "") : "Unable to authenticate.");
+      setError(formatFirebaseAuthError(caught));
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function continueWithGoogle() {
+    setGoogleBusy(true);
+    setError("");
+    try {
+      if (!isGoogleSignInAvailable()) throw new Error("Firebase is not configured for this environment.");
+      await signInWithPopup(firebaseAuth(), new GoogleAuthProvider());
+      navigate("/dashboard");
+    } catch (caught) {
+      setError(formatFirebaseAuthError(caught));
+    } finally {
+      setGoogleBusy(false);
     }
   }
 
@@ -50,6 +68,11 @@ export default function Login() {
           {error && <p role="alert" style={{ color: "#a53b2a", margin: 0 }}>{error}</p>}
           <button className="button button-primary" type="submit" disabled={busy}>{busy ? "Please wait…" : mode === "signin" ? "Sign in" : "Create account"}</button>
         </form>
+        <div className="login-divider"><span>or</span></div>
+        <button className="google-login-button" type="button" onClick={continueWithGoogle} disabled={busy || googleBusy}>
+          <span className="google-mark">G</span>
+          {googleBusy ? "Connecting…" : "Continue with Google"}
+        </button>
         <button className="text-link" type="button" onClick={() => { setMode(mode === "signin" ? "signup" : "signin"); setError(""); }} style={{ marginTop: 18 }}>
           {mode === "signin" ? "Need an account? Create one" : "Already have an account? Sign in"}
         </button>

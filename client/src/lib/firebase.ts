@@ -51,6 +51,10 @@ export function getFirebaseApp(): FirebaseApp {
   return getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
 }
 
+export function isGoogleSignInAvailable(config: FirebaseConfig = firebaseConfig) {
+  return isFirebaseConfigured(config);
+}
+
 export const firebaseAuth = () => getAuth(getFirebaseApp());
 export const firestore = () => getFirestore(getFirebaseApp());
 export const firebaseStorage = () => getStorage(getFirebaseApp());
