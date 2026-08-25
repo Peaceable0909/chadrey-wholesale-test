@@ -2,13 +2,14 @@ import { desc, eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import { InsertUser, users, products, quoteRequests, quoteRequestItems, quotations, invoices, payments, orders, notifications, messages, type Product } from "../drizzle/schema";
 import { ENV } from "./_core/env";
+import { listFirestoreProducts } from "./firestoreProducts";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 export async function getDb() { if (!_db && process.env.DATABASE_URL) { try { _db = drizzle(process.env.DATABASE_URL); } catch (error) { console.warn("[Database] Failed to connect:", error); _db = null; } } return _db; }
 
 export async function upsertUser(user: InsertUser): Promise<void> { if (!user.openId) throw new Error("User openId is required for upsert"); const db = await getDb(); if (!db) return; const values: InsertUser = { openId: user.openId, name: user.name ?? null, email: user.email ?? null, loginMethod: user.loginMethod ?? null, lastSignedIn: user.lastSignedIn ?? new Date(), role: user.role ?? (user.openId === ENV.ownerOpenId ? "admin" : "user") }; await db.insert(users).values(values).onDuplicateKeyUpdate({ set: { name: values.name, email: values.email, loginMethod: values.loginMethod, role: values.role, lastSignedIn: values.lastSignedIn } }); }
 export async function getUserByOpenId(openId: string) { const db = await getDb(); if (!db) return undefined; const result = await db.select().from(users).where(eq(users.openId, openId)).limit(1); return result[0]; }
-export async function listProducts(): Promise<Product[]> { const db = await getDb(); if (!db) return []; return db.select().from(products).where(eq(products.isActive, 1)).orderBy(desc(products.createdAt)); }
+export async function listProducts(): Promise<Product[]> { if (ENV.firestoreProductsEnabled) return listFirestoreProducts(); const db = await getDb(); if (!db) return []; return db.select().from(products).where(eq(products.isActive, 1)).orderBy(desc(products.createdAt)); }
 export async function createQuote(input: { customerId: number; ref: string; notes?: string; items: Array<{ productId: number; quantity: number; color: string; size: string; packaging: string; customization: string }> }) { const db = await getDb(); if (!db) throw new Error("Database unavailable"); const result = await db.insert(quoteRequests).values({ customerId: input.customerId, ref: input.ref, notes: input.notes ?? null, status: "pending" }); const quoteId = Number(result[0].insertId); if (input.items.length) await db.insert(quoteRequestItems).values(input.items.map(item => ({ ...item, quoteRequestId: quoteId }))); return quoteId; }
 export async function listCustomerQuotes(customerId: number) { const db = await getDb(); if (!db) return []; return db.select().from(quoteRequests).where(eq(quoteRequests.customerId, customerId)).orderBy(desc(quoteRequests.createdAt)); }
 export async function listAdminQuotes() { const db = await getDb(); if (!db) return []; return db.select().from(quoteRequests).orderBy(desc(quoteRequests.createdAt)); }

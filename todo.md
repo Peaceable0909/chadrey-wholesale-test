@@ -104,3 +104,4 @@
 - [x] Add a Firebase email/password sign-in and account-creation screen, route existing sign-in buttons to it when Firebase is configured, and preserve a temporary legacy fallback during migration.
 - [x] Fix Firestore read ownership checks, tighten quote/invoice Storage access to owner/admin scope, document `ownerUid` and admin-claim assumptions, and add regression tests for the rules.
 - [x] Make Firebase Auth the primary frontend session source, send fresh Firebase ID tokens through tRPC, and preserve legacy OAuth only as a temporary fallback.
+- [x] Add a feature-flagged Firestore product repository that maps active product documents into the existing catalogue contract and preserves MySQL during the staged migration.
