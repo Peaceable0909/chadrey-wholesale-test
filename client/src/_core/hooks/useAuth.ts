@@ -1,22 +1,37 @@
 import { startLogin } from "@/const";
+import { firebaseAuth, isFirebaseConfigured } from "@/lib/firebase";
 import { trpc } from "@/lib/trpc";
 import { TRPCClientError } from "@trpc/client";
-import { useCallback, useEffect, useMemo } from "react";
+import { onAuthStateChanged, signOut as firebaseSignOut, type User as FirebaseUser } from "firebase/auth";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 type UseAuthOptions = {
   redirectOnUnauthenticated?: boolean;
   redirectPath?: string;
 };
 
+const firebaseEnabled = isFirebaseConfigured();
+
 export function useAuth(options?: UseAuthOptions) {
-  // Login is started via startLogin() in the effect below, only when we actually
-  // navigate — never during render. startLogin() mints a one-time nonce + writes
-  // the state cookie, so calling it per render would overwrite the cookie and
-  // desync it from an in-flight login's `state`.
   const { redirectOnUnauthenticated = false, redirectPath } = options ?? {};
   const utils = trpc.useUtils();
+  const [firebaseUser, setFirebaseUser] = useState<FirebaseUser | null>(null);
+  const [firebaseLoading, setFirebaseLoading] = useState(firebaseEnabled);
+
+  useEffect(() => {
+    if (!firebaseEnabled) {
+      setFirebaseLoading(false);
+      return;
+    }
+
+    return onAuthStateChanged(firebaseAuth(), user => {
+      setFirebaseUser(user);
+      setFirebaseLoading(false);
+    });
+  }, []);
 
   const meQuery = trpc.auth.me.useQuery(undefined, {
+    enabled: !firebaseEnabled || (!firebaseLoading && Boolean(firebaseUser)),
     retry: false,
     refetchOnWindowFocus: false,
   });
@@ -29,6 +44,7 @@ export function useAuth(options?: UseAuthOptions) {
 
   const logout = useCallback(async () => {
     try {
+      if (firebaseEnabled) await firebaseSignOut(firebaseAuth());
       await logoutMutation.mutateAsync();
     } catch (error: unknown) {
       if (
@@ -39,9 +55,6 @@ export function useAuth(options?: UseAuthOptions) {
       }
       throw error;
     } finally {
-      // Clear the Preview auto-login token mirrored into sessionStorage, so
-      // header-based sessions (Safari ITP / WebView) are logged out too. The
-      // backend cookie is cleared by the logout mutation.
       try {
         sessionStorage.removeItem("manus-cookie");
       } catch {}
@@ -51,44 +64,26 @@ export function useAuth(options?: UseAuthOptions) {
   }, [logoutMutation, utils]);
 
   const state = useMemo(() => {
-    localStorage.setItem(
-      "manus-runtime-user-info",
-      JSON.stringify(meQuery.data)
-    );
+    const user = meQuery.data ?? null;
+    try {
+      localStorage.setItem("manus-runtime-user-info", JSON.stringify(user));
+    } catch {}
     return {
-      user: meQuery.data ?? null,
-      loading: meQuery.isLoading || logoutMutation.isPending,
+      user,
+      loading: firebaseLoading || meQuery.isLoading || logoutMutation.isPending,
       error: meQuery.error ?? logoutMutation.error ?? null,
-      isAuthenticated: Boolean(meQuery.data),
+      isAuthenticated: Boolean(user),
     };
-  }, [
-    meQuery.data,
-    meQuery.error,
-    meQuery.isLoading,
-    logoutMutation.error,
-    logoutMutation.isPending,
-  ]);
+  }, [firebaseLoading, meQuery.data, meQuery.error, meQuery.isLoading, logoutMutation.error, logoutMutation.isPending]);
 
   useEffect(() => {
-    if (!redirectOnUnauthenticated) return;
-    if (meQuery.isLoading || logoutMutation.isPending) return;
+    if (!redirectOnUnauthenticated || firebaseLoading || meQuery.isLoading || logoutMutation.isPending) return;
     if (state.user) return;
     if (typeof window === "undefined") return;
     if (redirectPath && window.location.pathname === redirectPath) return;
-
-    // Navigate at this moment only. startLogin() mints the nonce + cookie itself.
-    if (redirectPath) {
-      window.location.href = redirectPath;
-    } else {
-      startLogin();
-    }
-  }, [
-    redirectOnUnauthenticated,
-    redirectPath,
-    logoutMutation.isPending,
-    meQuery.isLoading,
-    state.user,
-  ]);
+    if (redirectPath) window.location.href = redirectPath;
+    else startLogin();
+  }, [redirectOnUnauthenticated, redirectPath, firebaseLoading, logoutMutation.isPending, meQuery.isLoading, state.user]);
 
   return {
     ...state,
