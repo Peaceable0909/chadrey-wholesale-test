@@ -101,3 +101,4 @@
 - [ ] Replace Manus OAuth session assumptions with Firebase ID-token authentication after the Firebase project credentials are complete.
 - [ ] Replace MySQL/Drizzle data access with Firestore repositories for products, quotes, quotations, invoices, payments, orders, messages, and notifications.
 - [ ] Add Firestore security rules and Cloud Run/Firebase Hosting deployment notes.
+- [x] Add a Firebase email/password sign-in and account-creation screen, route existing sign-in buttons to it when Firebase is configured, and preserve a temporary legacy fallback during migration.
