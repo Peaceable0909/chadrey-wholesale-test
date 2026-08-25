@@ -5,7 +5,7 @@ import type { Request } from "express";
 let adminApp: App | null = null;
 let adminAuth: Auth | null = null;
 
-function getFirebaseAdminApp(): App {
+export function getFirebaseAdminApp(): App {
   if (adminApp) return adminApp;
 
   adminApp =

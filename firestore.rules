@@ -1,0 +1,74 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return signedIn() && request.auth.token.admin == true;
+    }
+
+    function owns(resource) {
+      return signedIn() && resource.data.ownerUid == request.auth.uid;
+    }
+
+    match /users/{uid} {
+      allow read: if signedIn() && (request.auth.uid == uid || isAdmin());
+      allow create: if signedIn() && request.auth.uid == uid;
+      allow update: if signedIn() && (request.auth.uid == uid || isAdmin());
+      allow delete: if isAdmin();
+    }
+
+    match /products/{productId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /quoteRequests/{quoteId} {
+      allow read: if isAdmin() || owns(resource);
+      allow create: if signedIn() && request.resource.data.ownerUid == request.auth.uid;
+      allow update: if isAdmin() || owns(resource);
+      allow delete: if isAdmin();
+    }
+
+    match /quotations/{quotationId} {
+      allow read: if isAdmin() || owns(resource);
+      allow write: if isAdmin();
+    }
+
+    match /invoices/{invoiceId} {
+      allow read: if isAdmin() || owns(resource);
+      allow write: if isAdmin();
+    }
+
+    match /payments/{paymentId} {
+      allow read: if isAdmin() || owns(resource);
+      allow write: if isAdmin();
+    }
+
+    match /orders/{orderId} {
+      allow read: if isAdmin() || owns(resource);
+      allow write: if isAdmin();
+    }
+
+    match /messages/{messageId} {
+      allow read: if isAdmin() || owns(resource);
+      allow create: if signedIn() && request.resource.data.ownerUid == request.auth.uid;
+      allow update, delete: if isAdmin();
+    }
+
+    match /notifications/{notificationId} {
+      allow read: if isAdmin() || owns(resource);
+      allow write: if isAdmin();
+    }
+
+    match /deviceTokens/{tokenId} {
+      allow read: if isAdmin() || owns(resource);
+      allow create: if signedIn() && request.resource.data.ownerUid == request.auth.uid;
+      allow update: if isAdmin() || owns(resource);
+      allow delete: if isAdmin() || owns(resource);
+    }
+  }
+}

@@ -1,0 +1,42 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return signedIn() && request.auth.token.admin == true;
+    }
+
+    match /products/{allPaths=**} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /users/{uid}/{allPaths=**} {
+      allow read, write: if signedIn() && (request.auth.uid == uid || isAdmin());
+    }
+
+    function ownsQuote(quoteId) {
+      return signedIn() && firestore.get(
+        /databases/(default)/documents/quoteRequests/$(quoteId)
+      ).data.ownerUid == request.auth.uid;
+    }
+
+    function ownsInvoice(invoiceId) {
+      return signedIn() && firestore.get(
+        /databases/(default)/documents/invoices/$(invoiceId)
+      ).data.ownerUid == request.auth.uid;
+    }
+
+    match /quotes/{quoteId}/{allPaths=**} {
+      allow read, write: if isAdmin() || ownsQuote(quoteId);
+    }
+
+    match /invoices/{invoiceId}/{allPaths=**} {
+      allow read, write: if isAdmin() || ownsInvoice(invoiceId);
+    }
+  }
+}
