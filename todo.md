@@ -87,3 +87,7 @@
 - [ ] Verify the latest production deployment serves the redesigned Chadrey frontend and client-side routes after the correct deployment is promoted.
 - [x] Add generated static route entrypoints for Vercel direct navigation (`/products`, `/quote`, `/dashboard`, `/admin`, `/how-it-works`, `/contact`, and `/product`) if the platform rewrite remains unavailable.
 - [ ] Verify the live Vercel root and direct public routes after redeployment.
+
+- [ ] Apply the supplied Vercel proxy-to-backend deployment changes without committing a placeholder backend hostname.
+- [ ] Keep the frontend working with relative `/api` requests through the Vercel proxy and preserve same-origin OAuth cookies.
+- [ ] Document that a real HTTPS backend host and server environment variables are required before the proxy can be live.
