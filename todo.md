@@ -91,3 +91,13 @@
 - [ ] Apply the supplied Vercel proxy-to-backend deployment changes without committing a placeholder backend hostname.
 - [ ] Keep the frontend working with relative `/api` requests through the Vercel proxy and preserve same-origin OAuth cookies.
 - [ ] Document that a real HTTPS backend host and server environment variables are required before the proxy can be live.
+
+- [ ] Define Firebase-centered architecture: Authentication, Firestore, Storage, Cloud Messaging, and Cloud Run backend.
+- [ ] Replace Manus OAuth and MySQL/Drizzle assumptions with Firebase Auth and Firestore contracts after the user confirms the Firebase project.
+- [ ] Prepare a step-by-step Firebase and Cloud Run setup guide covering billing, services, security rules, secrets, and Flutterwave webhooks.
+
+- [x] Register the supplied Firebase web configuration for project `chadrey-wholesale` through environment-backed client settings.
+- [x] Add Firebase client SDK and Firebase Admin SDK dependencies without exposing server credentials to the browser.
+- [ ] Replace Manus OAuth session assumptions with Firebase ID-token authentication after the Firebase project credentials are complete.
+- [ ] Replace MySQL/Drizzle data access with Firestore repositories for products, quotes, quotations, invoices, payments, orders, messages, and notifications.
+- [ ] Add Firestore security rules and Cloud Run/Firebase Hosting deployment notes.

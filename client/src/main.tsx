@@ -6,6 +6,7 @@ import { createRoot } from "react-dom/client";
 import superjson from "superjson";
 import App from "./App";
 import { startLogin } from "./const";
+import { firebaseAuth, isFirebaseConfigured } from "./lib/firebase";
 import "./index.css";
 
 const queryClient = new QueryClient();
@@ -44,20 +45,28 @@ const trpcClient = trpc.createClient({
     httpBatchLink({
       url: `${API_BASE_URL}/api/trpc`,
       transformer: superjson,
-      headers() {
+      async headers() {
+        if (isFirebaseConfigured()) {
+          try {
+            const user = firebaseAuth().currentUser;
+            if (user) {
+              return { Authorization: `Bearer ${await user.getIdToken()}` };
+            }
+          } catch {
+            // Fall through to the legacy session while Firebase is being rolled out.
+          }
+        }
+
         // Preview auto-login fallback: when the browser blocks iframe cookies
         // (Safari ITP / private browsing / WebView), the runtime mirrors the
         // session into sessionStorage so we can forward it as a Bearer token.
-        // The regular OAuth cookie flow keeps working and takes priority server-side.
         try {
           const raw = sessionStorage.getItem("manus-cookie");
           if (raw) {
             const prefix = `${COOKIE_NAME}=`;
             const pair = raw.split(";").find(s => s.trim().startsWith(prefix));
             const token = pair?.trim().slice(prefix.length);
-            if (token) {
-              return { Authorization: `Bearer ${token}` };
-            }
+            if (token) return { Authorization: `Bearer ${token}` };
           }
         } catch {
           // sessionStorage unavailable
