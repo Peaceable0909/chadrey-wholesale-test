@@ -76,6 +76,14 @@
 - [x] Apply and verify the smallest safe fix for the Vercel deployment if the issue is in the project configuration or build output.
 
 - [x] Add Vercel configuration for the Vite frontend output at `dist/public` with the project build command.
-- [ ] Verify the Vercel deployment artifact and push the deployment configuration fix to the GitHub main branch.
+- [x] Verify the Vercel deployment artifact and push the deployment configuration fix to the GitHub main branch.
 - [ ] Redeploy the project on Vercel after adding `vercel.json`, then verify the live root URL serves the built frontend instead of raw server source.
 - [ ] Recheck key public routes and asset loading on the live Vercel deployment after the config change.
+
+- [ ] Correct Vercel Project Settings so Root Directory is `./` and Output Directory is `dist/public`.
+- [ ] Redeploy the latest `main` commit and verify the live homepage and static assets load correctly.
+
+- [ ] Recheck why the Vercel Production deployment is not updating from GitHub `main` and identify the active deployment commit/project linkage.
+- [ ] Verify the latest production deployment serves the redesigned Chadrey frontend and client-side routes after the correct deployment is promoted.
+- [x] Add generated static route entrypoints for Vercel direct navigation (`/products`, `/quote`, `/dashboard`, `/admin`, `/how-it-works`, `/contact`, and `/product`) if the platform rewrite remains unavailable.
+- [ ] Verify the live Vercel root and direct public routes after redeployment.
