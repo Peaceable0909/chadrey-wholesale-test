@@ -14,6 +14,7 @@ import QuotationReview from "./pages/QuotationReview";
 import QuoteMessages from "./pages/QuoteMessages";
 import OrderTracking from "./pages/OrderTracking";
 import AdminFulfilment from "./pages/AdminFulfilment";
+import AdminProductCreate from "./pages/AdminProductCreate";
 import InvoicePayment from "./pages/InvoicePayment";
 import HowItWorks from "./pages/HowItWorks";
 import Contact from "./pages/Contact";
@@ -34,6 +35,7 @@ function Router() {
       <Route path="/messages" component={QuoteMessages} />
       <Route path="/orders" component={OrderTracking} />
       <Route path="/admin/fulfilment" component={AdminFulfilment} />
+      <Route path="/admin/products/new" component={AdminProductCreate} />
       <Route path="/pay" component={InvoicePayment} />
       <Route path="/how-it-works" component={HowItWorks} />
       <Route path="/contact" component={Contact} />

@@ -105,3 +105,10 @@
 - [x] Fix Firestore read ownership checks, tighten quote/invoice Storage access to owner/admin scope, document `ownerUid` and admin-claim assumptions, and add regression tests for the rules.
 - [x] Make Firebase Auth the primary frontend session source, send fresh Firebase ID tokens through tRPC, and preserve legacy OAuth only as a temporary fallback.
 - [x] Add a feature-flagged Firestore product repository that maps active product documents into the existing catalogue contract and preserves MySQL during the staged migration.
+
+- [x] Add protected admin product creation form with required catalogue fields and dark-green design consistency.
+- [x] Add multi-image product selection/upload workflow with primary-image selection and validation.
+- [x] Persist new products to Firebase/Firestore through an admin-only server mutation and cover it with tests.
+
+- [x] Remove visible Manus sign-in wording from customer, admin, payment, and shared authentication entry points.
+- [x] Ensure configured Firebase environments never redirect users to the Manus OAuth portal.

@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { createFlutterwaveCheckout } from "./flutterwave";
+import { createFirestoreProduct } from "./firestoreProducts";
 import { COOKIE_NAME } from "@shared/const";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
@@ -12,7 +13,24 @@ const quoteItem = z.object({ productId: z.number().int().positive(), quantity: z
 export const appRouter = router({
   system: systemRouter,
   auth: router({ me: publicProcedure.query(opts => opts.ctx.user), logout: publicProcedure.mutation(({ ctx }) => { const cookieOptions = getSessionCookieOptions(ctx.req); ctx.res.clearCookie(COOKIE_NAME, { ...cookieOptions, maxAge: -1 }); return { success: true } as const; }) }),
-  catalogue: router({ list: publicProcedure.query(() => listProducts()) }),
+  catalogue: router({
+    list: publicProcedure.query(() => listProducts()),
+    adminCreate: adminProcedure.input(z.object({
+      slug: z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/).min(3).max(120),
+      name: z.string().trim().min(2).max(220),
+      description: z.string().trim().min(20).max(5000),
+      category: z.string().trim().min(2).max(80),
+      moq: z.number().int().positive(),
+      colors: z.array(z.string().trim().min(1).max(50)).min(1).max(30),
+      sizes: z.array(z.string().trim().min(1).max(30)).min(1).max(30),
+      packagingOptions: z.array(z.string().trim().min(1).max(120)).min(1).max(30),
+      customizationOptions: z.array(z.string().trim().min(1).max(160)).min(1).max(30),
+      images: z.array(z.string().url()).min(10).max(30),
+      primaryImage: z.string().url(),
+    }).refine(input => input.images.includes(input.primaryImage), { message: "Primary image must be one of the uploaded images", path: ["primaryImage"] })).mutation(async ({ ctx, input }) => {
+      return { id: await createFirestoreProduct({ ...input, createdByUid: ctx.user.openId }) };
+    }),
+  }),
   quotes: router({
     mine: protectedProcedure.query(({ ctx }) => listCustomerQuotes(ctx.user.id)),
     quotation: protectedProcedure.input(z.object({ quoteRequestId: z.number().int().positive() })).query(({ ctx, input }) => getQuotationForCustomer(input.quoteRequestId, ctx.user.id)),

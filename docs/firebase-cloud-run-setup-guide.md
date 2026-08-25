@@ -34,6 +34,7 @@ Configure server-only variables through Cloud Run environment variables or Googl
 | `FLUTTERWAVE_SECRET_KEY` | Server-side Flutterwave API verification and checkout |
 | `FLUTTERWAVE_WEBHOOK_HASH` | Webhook signature validation |
 | `VITE_API_URL` | Leave empty for Firebase Hosting same-origin `/api` routing, or set to a verified HTTPS backend origin |
+| `FIRESTORE_PRODUCTS_ENABLED` | Set to `true` only after active product documents have been imported into Firestore; defaults to MySQL during the staged migration |
 
 Do not commit `.env` files, service-account JSON, private keys, Flutterwave secrets, or webhook hashes.
 
@@ -50,7 +51,7 @@ Browser → Firebase Hosting → /api/** → Cloud Run Express/tRPC → Firebase
 
 ## 5. Firestore collections and security
 
-The migration uses these top-level collections: `users`, `products`, `quoteRequests`, `quotations`, `invoices`, `payments`, `orders`, `messages`, `notifications`, and `deviceTokens`. Customer-owned documents must include `ownerUid` with the Firebase Authentication UID. Admin authorization must be based on a verified Firebase Admin custom claim or server-side profile; the browser must not be trusted for role decisions.
+The migration uses these top-level collections: `users`, `products`, `quoteRequests`, `quotations`, `invoices`, `payments`, `orders`, `messages`, `notifications`, and `deviceTokens`. The first staged application switch is `FIRESTORE_PRODUCTS_ENABLED=true`, which routes catalogue reads through Firestore while the remaining transactional collections continue using the existing repository until their contracts are migrated. Customer-owned documents must include `ownerUid` with the Firebase Authentication UID. Admin authorization must be based on a verified Firebase Admin custom claim or server-side profile; the browser must not be trusted for role decisions.
 
 The repository includes `firestore.rules` and `storage.rules`. Review the rules against the final document shapes before deploying them. Product reads are public, customer documents are owner-scoped, and administrative writes require the verified `admin` claim.
 
