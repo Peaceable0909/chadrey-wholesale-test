@@ -134,3 +134,15 @@
 - [ ] Verify regular customer accounts cannot access the admin dashboard and retain the customer workspace.
 - [x] Add the dedicated `/admin/login` route, route unauthenticated admin pages to it, prevent public home exposure, and generate direct Vercel entrypoints for `/admin/login` and `/admin/products/new`.
 - [x] Fix admin login role verification to use the freshly fetched Firebase user profile and show a safe configuration message instead of crashing when Firebase variables are absent.
+
+- [ ] Diagnose why the live Firebase admin login cannot authenticate and reach the role-protected operations dashboard.
+- [ ] Verify the deployed Firebase configuration, enabled providers, backend token verification, and administrator role mapping.
+- [ ] Add a clear user-facing error state for configuration, provider, credential, and role failures.
+
+- [ ] Verify Google provider is enabled and the Vercel domain is authorized in Firebase Authentication.
+- [ ] Verify the signed-in Google account’s Firebase UID is mapped to the project’s admin role.
+- [ ] Confirm Google admin sign-in reaches `/admin` without exposing customer access or private credentials.
+
+- [x] Add a root `Dockerfile` compatible with the existing Express/Cloud Run production build and runtime.
+- [ ] Validate Cloud Run container start behavior with the platform-provided `PORT` and push the Dockerfile to GitHub main.
+- [ ] Redeploy Cloud Run and connect its public URL to the Vercel frontend API target.
