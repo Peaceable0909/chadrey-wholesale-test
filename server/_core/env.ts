@@ -10,4 +10,6 @@ export const ENV = {
   firebaseProjectId: process.env.FIREBASE_PROJECT_ID ?? "chadrey-wholesale",
   firebaseAdminUids: (process.env.FIREBASE_ADMIN_UIDS ?? "").split(",").map(uid => uid.trim()).filter(Boolean),
   firestoreProductsEnabled: process.env.FIRESTORE_PRODUCTS_ENABLED === "true",
+  supabaseUrl: process.env.SUPABASE_URL ?? process.env.VITE_SUPABASE_URL ?? "",
+  supabaseAnonKey: process.env.SUPABASE_ANON_KEY ?? process.env.VITE_SUPABASE_PUBLISHABLE_KEY ?? "",
 };

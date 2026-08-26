@@ -176,3 +176,16 @@
 - [ ] Defer Cloud Run API integration and complex backend migration until Vercel Firebase login is stable.
 
 - [ ] Push the latest Firebase/Firestore login and role-resolution changes to GitHub `main` and verify the remote commit.
+
+- [ ] Fix the customer login path so a successfully authenticated regular user is not sent back to the generic sign-in gate.
+- [ ] Fix the administrator Firestore profile read path so the approved admin document can be read safely.
+- [ ] Add regression coverage for customer profile creation and admin profile resolution without weakening role security.
+
+- [ ] Evaluate whether the available Supabase connection can replace Firestore and Cloud Run for user roles and business data.
+- [ ] Confirm the Supabase project ID and available tables before changing the data access layer.
+
+- [x] Use Supabase project `pysfxmosoijbghfzfhge` as the new Chadrey backend target.
+- [x] Confirm Supabase project connectivity and inspect existing tables before applying schema changes.
+- [x] Replace Firebase/Firestore login and role resolution with Supabase Auth and a protected profiles/roles table.
+- [ ] Migrate product image metadata to Supabase Storage and keep the 10-plus-image/main-image workflow.
+- [ ] Keep Vercel as the frontend hosting target and remove the immediate Cloud Run dependency.

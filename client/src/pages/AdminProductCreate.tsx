@@ -1,8 +1,7 @@
 import { useMemo, useState } from "react";
 import { ArrowLeft, Check, ImagePlus, Loader2, PackagePlus, Trash2, UploadCloud } from "lucide-react";
 import { Link, useLocation } from "wouter";
-import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
-import { firebaseStorage, isFirebaseConfigured } from "@/lib/firebase";
+import { getSupabaseClient, isSupabaseConfigured } from "@/lib/supabase";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { trpc } from "@/lib/trpc";
 
@@ -55,17 +54,19 @@ export default function AdminProductCreate() {
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError("");
-    if (!isFirebaseConfigured()) return setError("Firebase is not configured for this environment.");
+    if (!isSupabaseConfigured()) return setError("Supabase is not configured for this environment.");
     if (images.length < 10) return setError("Select at least 10 product images before publishing.");
     if (primaryIndex >= images.length) return setError("Choose a primary image.");
 
     setUploading(true);
     try {
       const safeSlug = slug.trim().toLowerCase();
+      const client = getSupabaseClient();
       const uploaded = await Promise.all(images.map(async ({ file }, index) => {
-        const objectRef = ref(firebaseStorage(), `products/${safeSlug}/${String(index + 1).padStart(2, "0")}-${file.name.replace(/[^a-zA-Z0-9._-]/g, "-")}`);
-        const snapshot = await uploadBytes(objectRef, file, { contentType: file.type });
-        return getDownloadURL(snapshot.ref);
+        const path = `products/${safeSlug}/${String(index + 1).padStart(2, "0")}-${file.name.replace(/[^a-zA-Z0-9._-]/g, "-")}`;
+        const { error: uploadError } = await client.storage.from("product-images").upload(path, file, { contentType: file.type, upsert: false });
+        if (uploadError) throw uploadError;
+        return client.storage.from("product-images").getPublicUrl(path).data.publicUrl;
       }));
       await createProduct.mutateAsync({
         slug: safeSlug,

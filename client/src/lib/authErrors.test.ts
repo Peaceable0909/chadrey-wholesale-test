@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { formatFirebaseAuthError } from "./authErrors";
+import { formatAuthError } from "./authErrors";
 
-describe("formatFirebaseAuthError", () => {
-  it("removes Firebase prefixes and technical error codes", () => {
-    expect(formatFirebaseAuthError(new Error("Firebase: Error (auth/popup-closed-by-user)."))).toBe("Error");
+describe("formatAuthError", () => {
+  it("maps invalid Supabase credentials to a safe message", () => {
+    expect(formatAuthError(new Error("Invalid login credentials"))).toBe("The email or password is incorrect.");
   });
 
   it("returns a safe fallback for unknown failures", () => {
-    expect(formatFirebaseAuthError({ reason: "offline" })).toBe("Unable to authenticate.");
+    expect(formatAuthError({ reason: "offline" })).toBe("Authentication could not be completed. Please try again.");
   });
 });

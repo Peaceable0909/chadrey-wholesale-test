@@ -1,9 +1,5 @@
-import { startLogin } from "@/const";
-import { firebaseAuth, isFirebaseConfigured } from "@/lib/firebase";
-import { getOrCreateFirebaseProfile, type FirebaseProfile } from "@/lib/userProfile";
-import { trpc } from "@/lib/trpc";
-import { TRPCClientError } from "@trpc/client";
-import { onAuthStateChanged, signOut as firebaseSignOut, type User as FirebaseUser } from "firebase/auth";
+import { getSupabaseClient, isSupabaseConfigured } from "@/lib/supabase";
+import { getOrCreateSupabaseProfile, type SupabaseProfile } from "@/lib/userProfile";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 type UseAuthOptions = {
@@ -11,86 +7,71 @@ type UseAuthOptions = {
   redirectPath?: string;
 };
 
-const firebaseEnabled = isFirebaseConfigured();
-
 export function useAuth(options?: UseAuthOptions) {
   const { redirectOnUnauthenticated = false, redirectPath } = options ?? {};
-  const utils = trpc.useUtils();
-  const [firebaseUser, setFirebaseUser] = useState<FirebaseUser | null>(null);
-  const [firebaseProfile, setFirebaseProfile] = useState<FirebaseProfile | null>(null);
-  const [firebaseError, setFirebaseError] = useState<unknown>(null);
-  const [firebaseLoading, setFirebaseLoading] = useState(firebaseEnabled);
+  const [user, setUser] = useState<SupabaseProfile | null>(null);
+  const [loading, setLoading] = useState(isSupabaseConfigured());
+  const [error, setError] = useState<unknown>(null);
 
-  useEffect(() => {
-    if (!firebaseEnabled) {
-      setFirebaseLoading(false);
-      return;
+  const refresh = useCallback(async () => {
+    if (!isSupabaseConfigured()) {
+      setLoading(false);
+      return null;
     }
-
-    return onAuthStateChanged(firebaseAuth(), user => {
-      setFirebaseUser(user);
-      if (!user) {
-        setFirebaseProfile(null);
-        setFirebaseError(null);
-        setFirebaseLoading(false);
-        return;
-      }
-      setFirebaseLoading(true);
-      getOrCreateFirebaseProfile(user)
-        .then(profile => {
-          setFirebaseProfile(profile);
-          setFirebaseError(null);
-        })
-        .catch(error => setFirebaseError(error))
-        .finally(() => setFirebaseLoading(false));
-    });
+    setLoading(true);
+    try {
+      const { data, error: sessionError } = await getSupabaseClient().auth.getSession();
+      if (sessionError) throw sessionError;
+      const nextUser = data.session?.user ? await getOrCreateSupabaseProfile(data.session.user) : null;
+      setUser(nextUser);
+      setError(null);
+      return nextUser;
+    } catch (caught) {
+      setUser(null);
+      setError(caught);
+      return null;
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
-  const meQuery = trpc.auth.me.useQuery(undefined, {
-    enabled: !firebaseEnabled,
-    retry: false,
-    refetchOnWindowFocus: false,
-  });
-
-  const logoutMutation = trpc.auth.logout.useMutation({
-    onSuccess: () => utils.auth.me.setData(undefined, null),
-  });
+  useEffect(() => {
+    if (!isSupabaseConfigured()) {
+      setLoading(false);
+      return;
+    }
+    const client = getSupabaseClient();
+    void refresh();
+    const { data } = client.auth.onAuthStateChange((_event, session) => {
+      if (!session?.user) {
+        setUser(null);
+        setLoading(false);
+        return;
+      }
+      void getOrCreateSupabaseProfile(session.user)
+        .then(profile => { setUser(profile); setError(null); })
+        .catch(caught => { setUser(null); setError(caught); })
+        .finally(() => setLoading(false));
+    });
+    return () => data.subscription.unsubscribe();
+  }, [refresh]);
 
   const logout = useCallback(async () => {
-    try {
-      if (firebaseEnabled) await firebaseSignOut(firebaseAuth());
-      else await logoutMutation.mutateAsync();
-    } catch (error: unknown) {
-      if (error instanceof TRPCClientError && error.data?.code === "UNAUTHORIZED") return;
-      throw error;
-    } finally {
-      try {
-        sessionStorage.removeItem("manus-cookie");
-        localStorage.removeItem("manus-runtime-user-info");
-      } catch {}
-      utils.auth.me.setData(undefined, null);
-      await utils.auth.me.invalidate();
-    }
-  }, [logoutMutation, utils]);
+    if (isSupabaseConfigured()) await getSupabaseClient().auth.signOut();
+    setUser(null);
+  }, []);
 
-  const user = (firebaseEnabled ? firebaseProfile : meQuery.data) ?? null;
-  const state = useMemo(() => {
-    try { localStorage.setItem("manus-runtime-user-info", JSON.stringify(user)); } catch {}
-    return {
-      user,
-      loading: firebaseLoading || meQuery.isLoading || logoutMutation.isPending,
-      error: firebaseError ?? meQuery.error ?? logoutMutation.error ?? null,
-      isAuthenticated: Boolean(user),
-    };
-  }, [firebaseError, firebaseLoading, meQuery.data, meQuery.error, meQuery.isLoading, logoutMutation.error, logoutMutation.isPending, user]);
+  const state = useMemo(() => ({
+    user,
+    loading: loading,
+    error,
+    isAuthenticated: Boolean(user),
+  }), [error, loading, user]);
 
   useEffect(() => {
-    if (!redirectOnUnauthenticated || state.loading || state.user) return;
-    if (typeof window === "undefined") return;
-    if (redirectPath && window.location.pathname === redirectPath) return;
-    if (redirectPath) window.location.href = redirectPath;
-    else startLogin();
-  }, [redirectOnUnauthenticated, redirectPath, state.loading, state.user]);
+    if (!redirectOnUnauthenticated || loading || user || typeof window === "undefined") return;
+    if (redirectPath && window.location.pathname !== redirectPath) window.location.href = redirectPath;
+  }, [loading, redirectOnUnauthenticated, redirectPath, user]);
 
-  return { ...state, refresh: async () => { if (firebaseUser) setFirebaseProfile(await getOrCreateFirebaseProfile(firebaseUser)); else await meQuery.refetch(); }, logout };
+  return { ...state, refresh, logout };
 }

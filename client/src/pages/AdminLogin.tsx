@@ -1,16 +1,8 @@
 import { FormEvent, useEffect, useState } from "react";
 import { Link, useLocation } from "wouter";
-import {
-  GoogleAuthProvider,
-  onAuthStateChanged,
-  signInWithEmailAndPassword,
-  signInWithPopup,
-  signOut,
-  type User as FirebaseUser,
-} from "firebase/auth";
-import { firebaseAuth, isFirebaseConfigured, isGoogleSignInAvailable } from "@/lib/firebase";
-import { formatFirebaseAuthError } from "@/lib/authErrors";
-import { getOrCreateFirebaseProfile } from "@/lib/userProfile";
+import { getSupabaseClient, isGoogleSignInAvailable, isSupabaseConfigured } from "@/lib/supabase";
+import { formatAuthError } from "@/lib/authErrors";
+import { getOrCreateSupabaseProfile, type SupabaseProfile } from "@/lib/userProfile";
 
 export default function AdminLogin() {
   const [, navigate] = useLocation();
@@ -19,23 +11,22 @@ export default function AdminLogin() {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [googleBusy, setGoogleBusy] = useState(false);
+
   useEffect(() => {
-    if (!isFirebaseConfigured()) return;
-    const auth = firebaseAuth();
-    return onAuthStateChanged(auth, async (user) => {
-      if (!user) return;
-      try {
-        const profile = await getOrCreateFirebaseProfile(user);
-        if (profile.role === "admin") navigate("/admin");
-      } catch {}
-    });
+    if (!isSupabaseConfigured()) return;
+    const client = getSupabaseClient();
+    void client.auth.getSession().then(async ({ data }) => {
+      if (!data.session?.user) return;
+      const profile = await getOrCreateSupabaseProfile(data.session.user);
+      if (profile.role === "admin") navigate("/admin");
+    }).catch(() => undefined);
   }, [navigate]);
 
-  async function confirmAdmin(user: FirebaseUser) {
-    const profile = await getOrCreateFirebaseProfile(user);
-    if (profile?.role !== "admin") {
-      await signOut(firebaseAuth());
-      throw new Error("This Firebase account does not have administrator access.");
+  async function confirmAdmin(profilePromise: Promise<SupabaseProfile>) {
+    const profile = await profilePromise;
+    if (profile.role !== "admin") {
+      await getSupabaseClient().auth.signOut();
+      throw new Error("This account does not have administrator access.");
     }
     navigate("/admin");
   }
@@ -45,11 +36,13 @@ export default function AdminLogin() {
     setBusy(true);
     setError("");
     try {
-      if (!isFirebaseConfigured()) throw new Error("Firebase is not configured for this environment.");
-      const result = await signInWithEmailAndPassword(firebaseAuth(), email.trim(), password);
-      await confirmAdmin(result.user);
+      if (!isSupabaseConfigured()) throw new Error("Supabase is not configured for this environment.");
+      const { data, error: signInError } = await getSupabaseClient().auth.signInWithPassword({ email: email.trim(), password });
+      if (signInError) throw signInError;
+      if (!data.user) throw new Error("No signed-in account was returned.");
+      await confirmAdmin(getOrCreateSupabaseProfile(data.user));
     } catch (caught) {
-      setError(formatFirebaseAuthError(caught));
+      setError(formatAuthError(caught));
     } finally {
       setBusy(false);
     }
@@ -59,23 +52,25 @@ export default function AdminLogin() {
     setGoogleBusy(true);
     setError("");
     try {
-      if (!isGoogleSignInAvailable()) throw new Error("Firebase Google sign-in is not configured for this environment.");
-      const result = await signInWithPopup(firebaseAuth(), new GoogleAuthProvider());
-      await confirmAdmin(result.user);
+      if (!isGoogleSignInAvailable()) throw new Error("Supabase is not configured for this environment.");
+      const { error: signInError } = await getSupabaseClient().auth.signInWithOAuth({
+        provider: "google",
+        options: { redirectTo: `${window.location.origin}/admin/login` },
+      });
+      if (signInError) throw signInError;
     } catch (caught) {
-      setError(formatFirebaseAuthError(caught));
-    } finally {
+      setError(formatAuthError(caught));
       setGoogleBusy(false);
     }
   }
 
-  if (!isFirebaseConfigured()) {
+  if (!isSupabaseConfigured()) {
     return <main className="confirmation-page">
       <Link href="/" className="back-link">← Back to Chadrey Wholesale</Link>
       <div className="document-card" style={{ maxWidth: 480, width: "100%" }}>
         <span className="eyebrow">ADMIN OPERATIONS</span>
         <h1>Admin sign-in is not configured.</h1>
-        <p>Add the `VITE_FIREBASE_*` environment variables to this deployment, then reload the page.</p>
+        <p>Add the Supabase browser variables to this deployment, then reload the page.</p>
       </div>
     </main>;
   }
@@ -86,7 +81,7 @@ export default function AdminLogin() {
       <div className="document-card" style={{ maxWidth: 480, width: "100%" }}>
         <span className="eyebrow">ADMIN OPERATIONS</span>
         <h1>Operations sign in.</h1>
-        <p>Use the Firebase account that has been granted Chadrey Wholesale administrator access.</p>
+        <p>Use the Supabase account that has been granted Chadrey Wholesale administrator access.</p>
         <form onSubmit={submit} style={{ display: "grid", gap: 14, marginTop: 24 }}>
           <input className="form-input" type="email" placeholder="Administrator email" value={email} onChange={event => setEmail(event.target.value)} required />
           <input className="form-input" type="password" placeholder="Password" value={password} onChange={event => setPassword(event.target.value)} required />

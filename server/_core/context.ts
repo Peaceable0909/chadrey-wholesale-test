@@ -1,8 +1,7 @@
 import type { CreateExpressContextOptions } from "@trpc/server/adapters/express";
+import { createClient } from "@supabase/supabase-js";
 import type { User } from "../../drizzle/schema";
 import { getUserByOpenId, upsertUser } from "../db";
-import { verifyFirebaseRequest } from "../firebaseAdmin";
-import { sdk } from "./sdk";
 import { ENV } from "./env";
 
 export type TrpcContext = {
@@ -11,56 +10,51 @@ export type TrpcContext = {
   user: User | null;
 };
 
-export async function createContext(
-  opts: CreateExpressContextOptions
-): Promise<TrpcContext> {
+function getBearerToken(req: CreateExpressContextOptions["req"]) {
+  const header = req.headers.authorization;
+  return header?.startsWith("Bearer ") ? header.slice("Bearer ".length).trim() : "";
+}
+
+export async function createContext(opts: CreateExpressContextOptions): Promise<TrpcContext> {
   let user: User | null = null;
+  const token = getBearerToken(opts.req);
 
-  // Firebase is the forward-looking authentication boundary. The existing
-  // database user shape is retained temporarily so current procedures remain
-  // type-compatible while Firestore repositories are introduced.
-  try {
-    const firebaseUser = await verifyFirebaseRequest(opts.req);
-    if (firebaseUser) {
-      const allowlistedAdmin = ENV.firebaseAdminUids.includes(firebaseUser.uid);
-      user = (await getUserByOpenId(firebaseUser.uid)) ?? null;
-      if (!user) {
-        await upsertUser({
-          openId: firebaseUser.uid,
-          email: firebaseUser.email ?? null,
-          name: firebaseUser.name ?? firebaseUser.email ?? "Chadrey customer",
-          loginMethod: "firebase",
-          role: allowlistedAdmin ? "admin" : "user",
-        });
-        user = (await getUserByOpenId(firebaseUser.uid)) ?? null;
-      } else if (allowlistedAdmin && user.role !== "admin") {
-        await upsertUser({
-          openId: user.openId,
-          email: user.email,
-          name: user.name,
-          loginMethod: "firebase",
-          role: "admin",
-        });
-        user = { ...user, role: "admin", loginMethod: "firebase" };
-      }
-    }
-  } catch (error) {
-    // Invalid or unavailable Firebase credentials fall through to the legacy
-    // session during the migration; public procedures remain anonymous.
-  }
-
-  if (!user) {
+  if (token && ENV.supabaseUrl && ENV.supabaseAnonKey) {
     try {
-      user = await sdk.authenticateRequest(opts.req);
-    } catch (error) {
-      // Authentication is optional for public procedures.
+      const supabase = createClient(ENV.supabaseUrl, ENV.supabaseAnonKey, {
+        auth: { persistSession: false, autoRefreshToken: false },
+        global: { headers: { Authorization: `Bearer ${token}` } },
+      });
+      const { data: authData, error: authError } = await supabase.auth.getUser(token);
+      if (authError || !authData.user) throw authError ?? new Error("Supabase user was not returned.");
+
+      const { data: profile, error: profileError } = await supabase
+        .from("profiles")
+        .select("id,email,name,role,company_name,phone,whatsapp")
+        .eq("id", authData.user.id)
+        .maybeSingle();
+      if (profileError) throw profileError;
+
+      const name = profile?.name ?? authData.user.user_metadata?.full_name ?? authData.user.email ?? "Chadrey customer";
+      const role = profile?.role === "admin" ? "admin" : "user";
+      const existing = await getUserByOpenId(authData.user.id);
+      await upsertUser({
+        openId: authData.user.id,
+        email: authData.user.email ?? profile?.email ?? null,
+        name,
+        loginMethod: "supabase",
+        role,
+        companyName: profile?.company_name ?? null,
+        phone: profile?.phone ?? null,
+        whatsapp: profile?.whatsapp ?? null,
+      });
+      user = existing
+        ? { ...existing, email: authData.user.email ?? existing.email, name, role, loginMethod: "supabase" }
+        : (await getUserByOpenId(authData.user.id)) ?? null;
+    } catch {
       user = null;
     }
   }
 
-  return {
-    req: opts.req,
-    res: opts.res,
-    user,
-  };
+  return { req: opts.req, res: opts.res, user };
 }
