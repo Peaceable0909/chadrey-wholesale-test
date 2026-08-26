@@ -11,6 +11,11 @@ describe("Firebase security rules", () => {
     expect(firestoreRules).not.toContain("allow read, write: if signedIn() && request.resource.data.ownerUid");
   });
 
+  it("does not allow customers to self-assign the administrator role", () => {
+    expect(firestoreRules).toContain('request.resource.data.role == "user"');
+    expect(firestoreRules).toContain('request.resource.data.role == resource.data.role');
+  });
+
   it("does not grant every signed-in user access to quote or invoice files", () => {
     expect(storageRules).toContain("isAdmin() || ownsQuote(quoteId)");
     expect(storageRules).toContain("isAdmin() || ownsInvoice(invoiceId)");

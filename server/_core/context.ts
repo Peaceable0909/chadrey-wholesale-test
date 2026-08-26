@@ -3,6 +3,7 @@ import type { User } from "../../drizzle/schema";
 import { getUserByOpenId, upsertUser } from "../db";
 import { verifyFirebaseRequest } from "../firebaseAdmin";
 import { sdk } from "./sdk";
+import { ENV } from "./env";
 
 export type TrpcContext = {
   req: CreateExpressContextOptions["req"];
@@ -21,6 +22,7 @@ export async function createContext(
   try {
     const firebaseUser = await verifyFirebaseRequest(opts.req);
     if (firebaseUser) {
+      const allowlistedAdmin = ENV.firebaseAdminUids.includes(firebaseUser.uid);
       user = (await getUserByOpenId(firebaseUser.uid)) ?? null;
       if (!user) {
         await upsertUser({
@@ -28,8 +30,18 @@ export async function createContext(
           email: firebaseUser.email ?? null,
           name: firebaseUser.name ?? firebaseUser.email ?? "Chadrey customer",
           loginMethod: "firebase",
+          role: allowlistedAdmin ? "admin" : "user",
         });
         user = (await getUserByOpenId(firebaseUser.uid)) ?? null;
+      } else if (allowlistedAdmin && user.role !== "admin") {
+        await upsertUser({
+          openId: user.openId,
+          email: user.email,
+          name: user.name,
+          loginMethod: "firebase",
+          role: "admin",
+        });
+        user = { ...user, role: "admin", loginMethod: "firebase" };
       }
     }
   } catch (error) {

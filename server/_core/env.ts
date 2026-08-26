@@ -8,5 +8,6 @@ export const ENV = {
   forgeApiUrl: process.env.BUILT_IN_FORGE_API_URL ?? "",
   forgeApiKey: process.env.BUILT_IN_FORGE_API_KEY ?? "",
   firebaseProjectId: process.env.FIREBASE_PROJECT_ID ?? "chadrey-wholesale",
+  firebaseAdminUids: (process.env.FIREBASE_ADMIN_UIDS ?? "").split(",").map(uid => uid.trim()).filter(Boolean),
   firestoreProductsEnabled: process.env.FIRESTORE_PRODUCTS_ENABLED === "true",
 };

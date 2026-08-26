@@ -156,3 +156,21 @@
 - [ ] Trace why Cloud Run returns a non-admin profile for the Google UID already promoted to `admin`.
 - [ ] Verify the deployed Cloud Run revision uses the same Firebase project and database as the Vercel frontend and local role update.
 - [x] Configure the project API target for the live Cloud Run URL and verify the public tRPC auth endpoint responds successfully.
+
+- [ ] Add a server-only administrator UID allowlist configuration for the supplied Firebase account, without exposing the allowlist to the browser.
+- [ ] Cover the UID allowlist role decision with unit tests and document the required Cloud Run environment variable.
+
+- [ ] Verify Vercel Production has `VITE_API_URL` set to the live Cloud Run URL and that the latest deployment includes it.
+- [ ] Verify Cloud Run has `FIREBASE_ADMIN_UIDS=hmCLDJP0Png1x1IOGtNZxJdXjcH3` on the active revision and redeploy if missing.
+- [ ] Retest Google admin login after both deployed environment settings are confirmed.
+
+- [ ] Diagnose why regular Firebase users cannot complete sign-in, independent of admin-role authorization.
+- [ ] Verify the deployed Vercel Firebase configuration and Cloud Run API target used by the login build.
+- [ ] Verify Firebase Admin token verification and user-profile upsert for a normal customer account.
+- [ ] Add clear login error messaging that identifies provider, configuration, network, and profile failures.
+
+- [ ] Reset the immediate delivery scope to one Firebase login, one hosting target, and one explicit admin access rule; defer payment, messaging, and complex migration work until the baseline is stable.
+- [ ] Confirm whether the simple target should be Firebase Hosting only or Vercel plus Cloud Run before changing deployment configuration.
+
+- [ ] Use Vercel as the sole immediate hosting target for the Firebase login baseline.
+- [ ] Defer Cloud Run API integration and complex backend migration until Vercel Firebase login is stable.

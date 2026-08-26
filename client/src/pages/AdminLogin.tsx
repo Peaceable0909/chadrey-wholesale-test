@@ -10,7 +10,7 @@ import {
 } from "firebase/auth";
 import { firebaseAuth, isFirebaseConfigured, isGoogleSignInAvailable } from "@/lib/firebase";
 import { formatFirebaseAuthError } from "@/lib/authErrors";
-import { trpc } from "@/lib/trpc";
+import { getOrCreateFirebaseProfile } from "@/lib/userProfile";
 
 export default function AdminLogin() {
   const [, navigate] = useLocation();
@@ -19,21 +19,20 @@ export default function AdminLogin() {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [googleBusy, setGoogleBusy] = useState(false);
-  const me = trpc.auth.me.useQuery(undefined, { retry: false, refetchOnWindowFocus: false });
-
   useEffect(() => {
     if (!isFirebaseConfigured()) return;
     const auth = firebaseAuth();
     return onAuthStateChanged(auth, async (user) => {
       if (!user) return;
-      const result = await me.refetch();
-      if (result.data?.role === "admin") navigate("/admin");
+      try {
+        const profile = await getOrCreateFirebaseProfile(user);
+        if (profile.role === "admin") navigate("/admin");
+      } catch {}
     });
-  }, [me, navigate]);
+  }, [navigate]);
 
   async function confirmAdmin(user: FirebaseUser) {
-    const result = await me.refetch();
-    const profile = result.data;
+    const profile = await getOrCreateFirebaseProfile(user);
     if (profile?.role !== "admin") {
       await signOut(firebaseAuth());
       throw new Error("This Firebase account does not have administrator access.");
