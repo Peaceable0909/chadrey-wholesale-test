@@ -117,3 +117,4 @@
 
 - [x] Add Google sign-in as a second Firebase Authentication option alongside email/password login.
 - [x] Add authentication tests or pure helper coverage for Google provider availability and error handling.
+- [x] Verify the live Vercel login page serves the Firebase email/password form and `Continue with Google` button after redeployment.
