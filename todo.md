@@ -187,5 +187,5 @@
 - [x] Use Supabase project `pysfxmosoijbghfzfhge` as the new Chadrey backend target.
 - [x] Confirm Supabase project connectivity and inspect existing tables before applying schema changes.
 - [x] Replace Firebase/Firestore login and role resolution with Supabase Auth and a protected profiles/roles table.
-- [ ] Migrate product image metadata to Supabase Storage and keep the 10-plus-image/main-image workflow.
+- [x] Migrate product image metadata to Supabase Storage and keep the 10-plus-image/main-image workflow.
 - [ ] Keep Vercel as the frontend hosting target and remove the immediate Cloud Run dependency.
