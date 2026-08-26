@@ -146,3 +146,13 @@
 - [x] Add a root `Dockerfile` compatible with the existing Express/Cloud Run production build and runtime.
 - [ ] Validate Cloud Run container start behavior with the platform-provided `PORT` and push the Dockerfile to GitHub main.
 - [ ] Redeploy Cloud Run and connect its public URL to the Vercel frontend API target.
+
+- [ ] Correct the Cloud Build trigger so it fetches GitHub commit `f455c35d` or the current `main` branch containing the root Dockerfile.
+- [ ] Rerun the build and confirm `/workspace/Dockerfile` is discovered before configuring Cloud Run and Vercel API routing.
+
+- [ ] Promote Firebase UID `hmCLDJP0Png1x1IOGtNZxJdXjcH3` to administrator in the active backend role store, after confirming the account exists there.
+- [ ] Retest the Google admin login after role promotion and verify redirection to `/admin`.
+
+- [ ] Trace why Cloud Run returns a non-admin profile for the Google UID already promoted to `admin`.
+- [ ] Verify the deployed Cloud Run revision uses the same Firebase project and database as the Vercel frontend and local role update.
+- [x] Configure the project API target for the live Cloud Run URL and verify the public tRPC auth endpoint responds successfully.
