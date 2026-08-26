@@ -181,8 +181,8 @@
 - [ ] Fix the administrator Firestore profile read path so the approved admin document can be read safely.
 - [ ] Add regression coverage for customer profile creation and admin profile resolution without weakening role security.
 
-- [ ] Evaluate whether the available Supabase connection can replace Firestore and Cloud Run for user roles and business data.
-- [ ] Confirm the Supabase project ID and available tables before changing the data access layer.
+- [x] Evaluate whether the available Supabase connection can replace Firestore and Cloud Run for user roles and business data.
+- [x] Confirm the Supabase project ID and available tables before changing the data access layer.
 
 - [x] Use Supabase project `pysfxmosoijbghfzfhge` as the new Chadrey backend target.
 - [x] Confirm Supabase project connectivity and inspect existing tables before applying schema changes.
