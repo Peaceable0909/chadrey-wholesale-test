@@ -174,3 +174,5 @@
 
 - [ ] Use Vercel as the sole immediate hosting target for the Firebase login baseline.
 - [ ] Defer Cloud Run API integration and complex backend migration until Vercel Firebase login is stable.
+
+- [ ] Push the latest Firebase/Firestore login and role-resolution changes to GitHub `main` and verify the remote commit.
