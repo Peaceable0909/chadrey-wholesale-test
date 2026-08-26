@@ -2,7 +2,7 @@ import { cp, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 
 const outputRoot = join(process.cwd(), "dist", "public");
-const routes = ["products", "quote", "dashboard", "admin", "how-it-works", "contact", "product", "orders", "pay", "messages", "review", "admin-quote", "admin-fulfilment"];
+const routes = ["products", "quote", "dashboard", "admin", "admin/login", "admin/products/new", "how-it-works", "contact", "product", "orders", "pay", "messages", "review", "admin-quote", "admin-fulfilment"];
 
 for (const route of routes) {
   const routeDir = join(outputRoot, route);

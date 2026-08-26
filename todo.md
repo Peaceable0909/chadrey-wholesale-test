@@ -118,3 +118,19 @@
 - [x] Add Google sign-in as a second Firebase Authentication option alongside email/password login.
 - [x] Add authentication tests or pure helper coverage for Google provider availability and error handling.
 - [x] Verify the live Vercel login page serves the Firebase email/password form and `Continue with Google` button after redeployment.
+
+- [ ] Make the home page admin access link/button prominent and directly reachable.
+- [ ] Fix Firebase admin sign-in flow and distinguish admin authentication failures from customer access failures.
+- [ ] Enforce separate admin/customer dashboard routing and role-based views after Firebase sign-in.
+- [ ] Re-verify the admin product image workflow supports 10+ images and explicit main-image selection.
+
+- [ ] Keep the admin login entry hidden from the home page and accessible only through a separate admin URL.
+- [ ] Fix Firebase admin sign-in flow and error handling without reintroducing the legacy local-password or Manus login system.
+- [ ] Enforce distinct admin and customer dashboard views after Firebase sign-in.
+- [ ] Re-verify the optional 10-plus-image product workflow and explicit main-image selection.
+
+- [x] Verify `/admin/login` is reachable as a separate hidden route and does not appear in the public home navigation.
+- [ ] Verify successful Firebase administrator authentication routes to the operations dashboard.
+- [ ] Verify regular customer accounts cannot access the admin dashboard and retain the customer workspace.
+- [x] Add the dedicated `/admin/login` route, route unauthenticated admin pages to it, prevent public home exposure, and generate direct Vercel entrypoints for `/admin/login` and `/admin/products/new`.
+- [x] Fix admin login role verification to use the freshly fetched Firebase user profile and show a safe configuration message instead of crashing when Firebase variables are absent.
