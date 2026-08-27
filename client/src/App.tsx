@@ -17,6 +17,7 @@ import OrderTracking from "./pages/OrderTracking";
 import AdminFulfilment from "./pages/AdminFulfilment";
 import AdminProductCreate from "./pages/AdminProductCreate";
 import AdminUsers from "./pages/AdminUsers";
+import AdminAnalytics from "./pages/AdminAnalytics";
 import InvoicePayment from "./pages/InvoicePayment";
 import HowItWorks from "./pages/HowItWorks";
 import Contact from "./pages/Contact";
@@ -33,6 +34,7 @@ function Router() {
       <Route path="/dashboard" component={CustomerDashboard} />
       <Route path="/admin" component={AdminDashboard} />
       <Route path="/admin/users" component={AdminUsers} />
+      <Route path="/admin/analytics" component={AdminAnalytics} />
       <Route path="/admin/login" component={AdminLogin} />
       <Route path="/admin/quote" component={AdminQuoteComposer} />
       <Route path="/quotation" component={QuotationReview} />

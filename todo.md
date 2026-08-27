@@ -207,3 +207,8 @@
 - [x] Replace non-live admin navigation and sections with working live routes or explicit unavailable states.
 - [x] Audit and replace the homepage hero image with a verified available asset.
 - [x] Validate the cleaned UI at public and admin routes on desktop and mobile.
+
+- [ ] Audit every visible button, link, card, icon action, and admin/analytics navigation item for dead ends.
+- [ ] Connect each public and customer card/button to a real route or working action.
+- [ ] Connect each admin and analytics card/button to live data or a useful detail view.
+- [ ] Add interaction regression coverage and verify all audited surfaces on desktop and mobile.
