@@ -202,3 +202,8 @@
 - [x] Fix admin portal controls and navigation so buttons and links are interactive rather than placeholders.
 - [x] Make the admin portal responsive on desktop, tablet, and mobile layouts.
 - [x] Add tests for admin-only user listing, protected role changes, and preventing unsafe self-demotion.
+
+- [x] Remove hardcoded seed quote, order, notification, and KPI content from customer/admin screens without deleting real database records.
+- [x] Replace non-live admin navigation and sections with working live routes or explicit unavailable states.
+- [x] Audit and replace the homepage hero image with a verified available asset.
+- [x] Validate the cleaned UI at public and admin routes on desktop and mobile.

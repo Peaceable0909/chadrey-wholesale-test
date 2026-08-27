@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { ArrowRight, Bell, Check, ChevronDown, Menu, PackageCheck, ShieldCheck, Sparkles, Truck, X } from "lucide-react";
 import { Link } from "wouter";
 
-const heroImage = "/manus-storage/chadrey-logistics-hero_bd3dc1a2.jpg";
+const heroImage = "/manus-storage/chadrey-logistics-hero_a77922bf.jpg";
 const categories = [
   { name: "Apparel & Textiles", count: "120+ products", mark: "01", tone: "sage" },
   { name: "Home & Living", count: "90+ products", mark: "02", tone: "gold" },
