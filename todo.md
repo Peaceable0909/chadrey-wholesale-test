@@ -250,3 +250,10 @@
 - [x] Design the quote request flow around a prominent free-form requirements field, optional product attributes, and preferred product-image selection
 - [x] Add admin visibility for submitted quote requirements, selected images, and optional attribute choices
 - [x] Validate the revised customer quote and admin products layouts on desktop and mobile
+
+- [x] Add customer upload for an additional reference image or file with secure storage metadata
+- [x] Add editable labels for product images so customers can identify designs or variations
+- [x] Add explicit per-product option toggles for sizes, colours, variants/forms, packaging, and customization
+- [x] Add a clear pre-submit quote summary covering product, image/design, quantity, options, and requirements
+- [x] Show reference files, image labels, and complete quote summaries in My Quotes and admin quote management
+- [x] Revalidate the clarified quote workflow on desktop and mobile, then push the final changes to GitHub main
