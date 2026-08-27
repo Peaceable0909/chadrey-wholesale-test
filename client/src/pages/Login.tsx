@@ -1,5 +1,7 @@
 import { FormEvent, useState } from "react";
 import { Link, useLocation } from "wouter";
+import { useEffect } from "react";
+import { dashboardPathForRole, getOrCreateSupabaseProfile } from "@/lib/userProfile";
 import { getSupabaseClient, isGoogleSignInAvailable, isSupabaseConfigured } from "@/lib/supabase";
 import { formatAuthError } from "@/lib/authErrors";
 
@@ -12,6 +14,15 @@ export default function Login() {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [googleBusy, setGoogleBusy] = useState(false);
+
+  useEffect(() => {
+    if (!isSupabaseConfigured()) return;
+    void getSupabaseClient().auth.getSession().then(async ({ data }) => {
+      if (!data.session?.user) return;
+      const profile = await getOrCreateSupabaseProfile(data.session.user);
+      navigate(dashboardPathForRole(profile.role));
+    }).catch(() => undefined);
+  }, [navigate]);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -31,7 +42,9 @@ export default function Login() {
       } else {
         const { error: signInError } = await client.auth.signInWithPassword({ email: email.trim(), password });
         if (signInError) throw signInError;
-        navigate("/dashboard");
+        const { data: sessionData } = await client.auth.getSession();
+        const profile = sessionData.session?.user ? await getOrCreateSupabaseProfile(sessionData.session.user) : null;
+        navigate(dashboardPathForRole(profile?.role ?? "user"));
       }
     } catch (caught) {
       setError(formatAuthError(caught));
@@ -47,7 +60,7 @@ export default function Login() {
       if (!isGoogleSignInAvailable()) throw new Error("Supabase is not configured for this environment.");
       const { error: signInError } = await getSupabaseClient().auth.signInWithOAuth({
         provider: "google",
-        options: { redirectTo: `${window.location.origin}/dashboard` },
+        options: { redirectTo: `${window.location.origin}/login` },
       });
       if (signInError) throw signInError;
     } catch (caught) {

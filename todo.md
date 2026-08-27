@@ -193,3 +193,7 @@
 - [x] Fix deployed Vercel error: `Supabase is not configured for this environment` on the sign-in screen.
 - [x] Verify the built frontend exposes the required Supabase URL and public key variables without exposing service-role credentials.
 - [x] Validate `/login` and `/admin/login` after the configuration fix and document the required Vercel environment-variable scope.
+
+- [x] Fix authenticated Supabase administrator accounts landing in the customer dashboard instead of the operations portal.
+- [x] Verify `profiles.role` resolution and keep regular customer accounts blocked from `/admin`.
+- [x] Add regression coverage for admin redirect and customer/admin dashboard separation.

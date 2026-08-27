@@ -8,6 +8,10 @@ export type SupabaseProfile = {
   role: "admin" | "user";
 };
 
+export function dashboardPathForRole(role: SupabaseProfile["role"]) {
+  return role === "admin" ? "/admin" : "/dashboard";
+}
+
 export function profileFromSupabaseUser(user: SupabaseUser, role: "admin" | "user" = "user"): SupabaseProfile {
   return {
     uid: user.id,
