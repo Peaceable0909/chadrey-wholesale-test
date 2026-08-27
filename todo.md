@@ -209,7 +209,7 @@
 - [x] Validate the cleaned UI at public and admin routes on desktop and mobile.
 
 - [ ] Audit every visible button, link, card, icon action, and admin/analytics navigation item for dead ends.
-- [ ] Connect each public and customer card/button to a real route or working action.
+- [x] Connect each public and customer card/button to a real route or working action.
 - [x] Connect each admin and analytics card/button to live data or a useful detail view.
 - [ ] Add interaction regression coverage and verify all audited surfaces on desktop and mobile.
 

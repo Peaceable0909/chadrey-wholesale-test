@@ -8,6 +8,7 @@ import Catalogue from "./pages/Catalogue";
 import ProductDetail from "./pages/ProductDetail";
 import QuoteRequest from "./pages/QuoteRequest";
 import CustomerDashboard from "./pages/CustomerDashboard";
+import CustomerAccount from "./pages/CustomerAccount";
 import AdminDashboard from "./pages/AdminDashboard";
 import AdminLogin from "./pages/AdminLogin";
 import AdminQuoteComposer from "./pages/AdminQuoteComposer";
@@ -32,6 +33,8 @@ function Router() {
       <Route path="/product" component={ProductDetail} />
       <Route path="/quote" component={QuoteRequest} />
       <Route path="/dashboard" component={CustomerDashboard} />
+      <Route path="/account" component={CustomerAccount} />
+      <Route path="/addresses" component={CustomerAccount} />
       <Route path="/admin" component={AdminDashboard} />
       <Route path="/admin/users" component={AdminUsers} />
       <Route path="/admin/analytics" component={AdminAnalytics} />
