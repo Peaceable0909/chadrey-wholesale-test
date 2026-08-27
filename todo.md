@@ -222,3 +222,8 @@
 - [x] Fix admin product creation so product and image uploads complete reliably instead of appearing unresponsive.
 - [x] Add animated loading/progress feedback during image uploads and final product submission.
 - [x] Add actionable upload error and retry states, then validate the complete upload flow.
+
+- [x] Change the product image minimum from 10 to 2 across validation, copy, and upload UI.
+- [x] Add secure admin product listing, edit, and delete actions for Supabase products and image metadata.
+- [x] Add product-description formatting controls for bold text and bullet points with safe rendered output.
+- [x] Validate product management, formatted descriptions, image cleanup, and role boundaries.

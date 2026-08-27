@@ -17,6 +17,7 @@ import QuoteMessages from "./pages/QuoteMessages";
 import OrderTracking from "./pages/OrderTracking";
 import AdminFulfilment from "./pages/AdminFulfilment";
 import AdminProductCreate from "./pages/AdminProductCreate";
+import AdminProducts from "./pages/AdminProducts";
 import AdminUsers from "./pages/AdminUsers";
 import AdminAnalytics from "./pages/AdminAnalytics";
 import InvoicePayment from "./pages/InvoicePayment";
@@ -44,6 +45,7 @@ function Router() {
       <Route path="/messages" component={QuoteMessages} />
       <Route path="/orders" component={OrderTracking} />
       <Route path="/admin/fulfilment" component={AdminFulfilment} />
+      <Route path="/admin/products" component={AdminProducts} />
       <Route path="/admin/products/new" component={AdminProductCreate} />
       <Route path="/pay" component={InvoicePayment} />
       <Route path="/how-it-works" component={HowItWorks} />
