@@ -234,11 +234,11 @@
 - [x] Ensure detail-page quote/cart actions carry the selected product and options into the request flow.
 - [x] Validate all product IDs, Supabase products, fallback products, and direct detail routes.
 
-- [ ] Make the full catalogue product card open the exact selected product slug, including keyboard activation.
-- [ ] Stop unknown product slugs from silently rendering the unrelated default product.
-- [ ] Load and display all Supabase product images on the matching detail page with selectable thumbnails.
-- [ ] Preserve the selected product’s short/full descriptions and quote options on the detail route.
-- [ ] Validate product-specific navigation, image galleries, and not-found states on desktop and mobile.
+- [x] Make the full catalogue product card open the exact selected product slug, including keyboard activation.
+- [x] Stop unknown product slugs from silently rendering the unrelated default product.
+- [x] Load and display all Supabase product images on the matching detail page with selectable thumbnails.
+- [x] Preserve the selected product’s short/full descriptions and quote options on the detail route.
+- [x] Validate product-specific navigation, image galleries, and not-found states on desktop and mobile.
 
 - [x] Make every catalogue card navigate to its exact product slug, including keyboard activation
 - [x] Load all product-specific Supabase images on the detail page with selectable thumbnails

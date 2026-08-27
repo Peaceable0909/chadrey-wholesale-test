@@ -16,7 +16,7 @@ const strings = (value: unknown, fallbackValue: string[]) => Array.isArray(value
 
 export default function ProductDetail() {
   const [location] = useLocation();
-  const key = productSlugFromLocation(location);
+  const key = productSlugFromLocation(`${location}${window.location.search}`);
   const [product, setProduct] = useState<Product | null>(fallback[key] || null);
   const [loading, setLoading] = useState(Boolean(supabase));
   const [selectedImage, setSelectedImage] = useState<string | undefined>();
