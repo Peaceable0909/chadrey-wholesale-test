@@ -25,11 +25,11 @@ export default function Catalogue() {
   useEffect(() => {
     if (!supabase) return;
     let active = true;
-    void supabase.from("products").select("id,slug,name,category,moq,description,product_images(public_url,is_primary,sort_order)").eq("is_active", true).order("created_at", { ascending: false }).then(({ data }) => {
+    void supabase.from("products").select("id,slug,name,description,short_description,category,moq,product_images(public_url,is_primary,sort_order)").eq("is_active", true).order("created_at", { ascending: false }).then(({ data }) => {
       if (!active || !data?.length) return;
       const mapped = data.map((product: any): CatalogueProduct => {
         const images = Array.isArray(product.product_images) ? [...product.product_images].sort((a, b) => Number(b.is_primary) - Number(a.is_primary) || a.sort_order - b.sort_order) : [];
-        return { id: product.slug, name: product.name, category: product.category, moq: product.moq, desc: product.description, tag: "Wholesale ready", tone: "mint", image: images[0]?.public_url };
+        return { id: product.slug, name: product.name, category: product.category, moq: product.moq, desc: product.short_description || product.description, tag: "Wholesale ready", tone: "mint", image: images[0]?.public_url };
       });
       setProducts(mapped);
     });

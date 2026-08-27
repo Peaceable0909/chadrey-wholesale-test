@@ -227,3 +227,9 @@
 - [x] Add secure admin product listing, edit, and delete actions for Supabase products and image metadata.
 - [x] Add product-description formatting controls for bold text and bullet points with safe rendered output.
 - [x] Validate product management, formatted descriptions, image cleanup, and role boundaries.
+
+- [x] Make the entire product card on `/products` open the matching product detail page.
+- [x] Add separate short catalogue description and full product-page description fields for products.
+- [x] Render the short description in catalogue cards and the full description on product detail pages.
+- [x] Ensure detail-page quote/cart actions carry the selected product and options into the request flow.
+- [x] Validate all product IDs, Supabase products, fallback products, and direct detail routes.

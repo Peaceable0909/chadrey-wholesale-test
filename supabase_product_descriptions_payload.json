@@ -1,0 +1,1 @@
+{"project_id":"pysfxmosoijbghfzfhge","name":"add_product_short_descriptions","query":"alter table public.products add column if not exists short_description text not null default '';\nupdate public.products set short_description = left(regexp_replace(description, '\\s+', ' ', 'g'), 180) where short_description = '';"}
