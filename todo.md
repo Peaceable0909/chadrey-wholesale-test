@@ -210,7 +210,7 @@
 
 - [ ] Audit every visible button, link, card, icon action, and admin/analytics navigation item for dead ends.
 - [ ] Connect each public and customer card/button to a real route or working action.
-- [ ] Connect each admin and analytics card/button to live data or a useful detail view.
+- [x] Connect each admin and analytics card/button to live data or a useful detail view.
 - [ ] Add interaction regression coverage and verify all audited surfaces on desktop and mobile.
 
 - [x] Apply the agreed customer and admin flow architecture to the active application routes and workflows.
