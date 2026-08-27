@@ -218,3 +218,7 @@
 - [x] Add and verify RLS policies for customer ownership, administrator access, role changes, and storage uploads.
 - [x] Create an admin dashboard wireframe/component breakdown tied to real routes and actions.
 - [x] Add tests and save a checkpoint after validating the architecture implementation.
+
+- [x] Fix admin product creation so product and image uploads complete reliably instead of appearing unresponsive.
+- [x] Add animated loading/progress feedback during image uploads and final product submission.
+- [x] Add actionable upload error and retry states, then validate the complete upload flow.
