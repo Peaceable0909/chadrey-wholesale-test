@@ -197,3 +197,8 @@
 - [x] Fix authenticated Supabase administrator accounts landing in the customer dashboard instead of the operations portal.
 - [x] Verify `profiles.role` resolution and keep regular customer accounts blocked from `/admin`.
 - [x] Add regression coverage for admin redirect and customer/admin dashboard separation.
+
+- [x] Add an admin user-management section listing registered profiles and allowing secure role changes.
+- [x] Fix admin portal controls and navigation so buttons and links are interactive rather than placeholders.
+- [x] Make the admin portal responsive on desktop, tablet, and mobile layouts.
+- [x] Add tests for admin-only user listing, protected role changes, and preventing unsafe self-demotion.
