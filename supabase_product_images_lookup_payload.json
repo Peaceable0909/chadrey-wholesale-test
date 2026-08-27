@@ -1,0 +1,1 @@
+{"project_id":"pysfxmosoijbghfzfhge","query":"select product_id, storage_path, public_url, is_primary, sort_order from public.product_images where product_id = '761cbd43-660f-4827-af5f-90ff2c6492d7' order by is_primary desc, sort_order asc limit 30;"}

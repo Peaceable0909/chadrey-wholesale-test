@@ -1,0 +1,1 @@
+{"project_id":"pysfxmosoijbghfzfhge","query":"select id, slug, name, short_description, description from public.products order by created_at desc limit 20;"}
