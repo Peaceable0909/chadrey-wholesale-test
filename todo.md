@@ -212,3 +212,9 @@
 - [ ] Connect each public and customer card/button to a real route or working action.
 - [ ] Connect each admin and analytics card/button to live data or a useful detail view.
 - [ ] Add interaction regression coverage and verify all audited surfaces on desktop and mobile.
+
+- [x] Apply the agreed customer and admin flow architecture to the active application routes and workflows.
+- [x] Expand the Supabase schema for profiles, catalogue, quote lifecycle, quotations, invoices, payments, orders, messaging, notifications, and auditability.
+- [x] Add and verify RLS policies for customer ownership, administrator access, role changes, and storage uploads.
+- [x] Create an admin dashboard wireframe/component breakdown tied to real routes and actions.
+- [x] Add tests and save a checkpoint after validating the architecture implementation.
