@@ -244,3 +244,9 @@
 - [x] Load all product-specific Supabase images on the detail page with selectable thumbnails
 - [x] Prevent unknown product slugs from rendering an unrelated fallback product
 - [x] Verify product discovery and detail gallery behavior on desktop and mobile
+
+- [x] Reorganize the admin products page into a compact, scannable catalogue with bounded image previews and concise product summaries
+- [x] Add a clear admin product edit panel with grouped fields, compact spacing, and mobile-safe controls
+- [x] Design the quote request flow around a prominent free-form requirements field, optional product attributes, and preferred product-image selection
+- [x] Add admin visibility for submitted quote requirements, selected images, and optional attribute choices
+- [x] Validate the revised customer quote and admin products layouts on desktop and mobile

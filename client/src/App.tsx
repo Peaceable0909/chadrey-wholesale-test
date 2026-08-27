@@ -12,6 +12,7 @@ import CustomerAccount from "./pages/CustomerAccount";
 import AdminDashboard from "./pages/AdminDashboard";
 import AdminLogin from "./pages/AdminLogin";
 import AdminQuoteComposer from "./pages/AdminQuoteComposer";
+import AdminQuoteRequests from "./pages/AdminQuoteRequests";
 import QuotationReview from "./pages/QuotationReview";
 import QuoteMessages from "./pages/QuoteMessages";
 import OrderTracking from "./pages/OrderTracking";
@@ -40,6 +41,7 @@ function Router() {
       <Route path="/admin/users" component={AdminUsers} />
       <Route path="/admin/analytics" component={AdminAnalytics} />
       <Route path="/admin/login" component={AdminLogin} />
+      <Route path="/admin/quotes" component={AdminQuoteRequests} />
       <Route path="/admin/quote" component={AdminQuoteComposer} />
       <Route path="/quotation" component={QuotationReview} />
       <Route path="/messages" component={QuoteMessages} />
