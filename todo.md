@@ -189,3 +189,7 @@
 - [x] Replace Firebase/Firestore login and role resolution with Supabase Auth and a protected profiles/roles table.
 - [x] Migrate product image metadata to Supabase Storage and keep the 10-plus-image/main-image workflow.
 - [ ] Keep Vercel as the frontend hosting target and remove the immediate Cloud Run dependency.
+
+- [ ] Fix deployed Vercel error: `Supabase is not configured for this environment` on the sign-in screen.
+- [ ] Verify the built frontend exposes the required Supabase URL and public key variables without exposing service-role credentials.
+- [ ] Validate `/login` and `/admin/login` after the configuration fix and document the required Vercel environment-variable scope.
