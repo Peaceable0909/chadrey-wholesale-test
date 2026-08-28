@@ -1,13 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import { ArrowRight, Bell, Check, Menu, PackageCheck, ShieldCheck, Sparkles, Truck, X } from "lucide-react";
 import { Link } from "wouter";
+import { supabase } from "@/lib/supabase";
 
-const heroImage = "/manus-storage/chadrey-logistics-hero_a77922bf.jpg";
-const categories = [
-  { name: "Apparel & Textiles", count: "120+ products", mark: "01", tone: "sage" },
-  { name: "Home & Living", count: "90+ products", mark: "02", tone: "gold" },
-  { name: "Packaging & Supplies", count: "150+ products", mark: "03", tone: "green" },
-  { name: "Electronics & Accessories", count: "80+ products", mark: "04", tone: "slate" },
+const baseCategories = [
+  { name: "Apparel & Textiles", mark: "01", tone: "sage" },
+  { name: "Home & Living", mark: "02", tone: "gold" },
+  { name: "Packaging & Supplies", mark: "03", tone: "green" },
+  { name: "Electronics & Accessories", mark: "04", tone: "slate" },
 ];
 const processSteps = [
   { n: "1", icon: "⌕", t: "Browse Products", d: "Explore our wide range of products and categories.", href: "/products" },
@@ -31,12 +31,24 @@ function Header() {
 }
 
 export default function Home() {
+  const [counts, setCounts] = useState<Record<string, number>>({});
+  useEffect(() => {
+    if (!supabase) return;
+    let active = true;
+    void supabase.from("products").select("category").eq("is_active", true).then(({ data, error }) => {
+      if (!active || error || !data) return;
+      const tally: Record<string, number> = {};
+      for (const row of data as { category: string }[]) tally[row.category] = (tally[row.category] || 0) + 1;
+      setCounts(tally);
+    });
+    return () => { active = false; };
+  }, []);
   return <div className="app-shell reference-home"><Header /><main>
     <section className="reference-hero">
       <div className="reference-hero-copy"><span className="reference-pill"><span/> B2B WHOLESALE MARKETPLACE</span><h1>Power your business<br/>with <span>quality products</span><br/>at wholesale prices.</h1><p>Source premium products, request custom quotes, and build lasting partnerships that grow your business.</p><div className="hero-actions"><Link className="button button-primary" href="/quote"><PackageCheck size={17}/> Request a Quote</Link><Link className="button button-secondary" href="/products"><span className="button-grid-icon">⊞</span> Browse Products</Link></div><div className="trust-list reference-trust"><span><ShieldCheck size={21}/><b>Trusted Suppliers</b><small>Verified & reliable partners</small></span><span><Sparkles size={21}/><b>Competitive Pricing</b><small>Best value for your business</small></span><span><Check size={21}/><b>Custom Solutions</b><small>Tailored to your needs</small></span><span><Truck size={21}/><b>Reliable Delivery</b><small>On-time, every time</small></span></div></div>
-      <div className="reference-hero-image" style={{backgroundImage:`url(${heroImage})`}}><div className="hero-image-overlay"/><div className="hero-business-badge"><strong>150+</strong><span>Growing businesses<br/>with Chadrey Wholesale</span></div></div>
+      <div className="reference-hero-image" style={{background:"var(--forest-deep)"}}><div className="art-grid"/><div className="crate crate-one">SOURCING<span>Verified factories</span></div><div className="crate crate-two">QUALITY<span>Checked before dispatch</span></div><div className="hero-image-overlay"/><div className="hero-business-badge"><strong><PackageCheck size={22}/></strong><span>Built for growing<br/>wholesale businesses</span></div></div>
     </section>
-    <section className="reference-section categories-section"><div className="section-heading"><div><span className="eyebrow">EXPLORE OUR RANGE</span><h2>Popular Categories</h2></div><Link href="/products" className="text-link">View All Products <ArrowRight size={16}/></Link></div><div className="reference-category-grid">{categories.map((category) => <Link href={`/products?category=${encodeURIComponent(category.name)}`} className={`reference-category-card ${category.tone}`} key={category.name}><div className="category-visual"><span>{category.mark}</span><div className="category-visual-lines"/></div><div className="category-card-copy"><h3>{category.name}</h3><p>{category.count}</p><span className="category-arrow"><ArrowRight size={17}/></span></div></Link>)}</div><div className="category-dots"><i className="active"/><i/><i/><i/></div></section>
+    <section className="reference-section categories-section"><div className="section-heading"><div><span className="eyebrow">EXPLORE OUR RANGE</span><h2>Popular Categories</h2></div><Link href="/products" className="text-link">View All Products <ArrowRight size={16}/></Link></div><div className="reference-category-grid">{baseCategories.map((category) => <Link href={`/products?category=${encodeURIComponent(category.name)}`} className={`reference-category-card ${category.tone}`} key={category.name}><div className="category-visual"><span>{category.mark}</span><div className="category-visual-lines"/></div><div className="category-card-copy"><h3>{category.name}</h3><p>{counts[category.name] ? `${counts[category.name]} product${counts[category.name] === 1 ? "" : "s"}` : "New · coming soon"}</p><span className="category-arrow"><ArrowRight size={17}/></span></div></Link>)}</div><div className="category-dots"><i className="active"/><i/><i/><i/></div></section>
     <section className="reference-process"><div className="reference-process-title"><span className="eyebrow eyebrow-light">SIMPLE FROM START TO FINISH</span><h2>How It Works</h2><p>A clear wholesale journey with one connected workspace for every request, quote, and delivery.</p></div><div className="reference-process-grid">{processSteps.map((step) => <Link href={step.href} className="reference-process-step" key={step.n}><span className="process-number">{step.n}</span><span className="process-icon">{step.icon}</span><h3>{step.t}</h3><p>{step.d}</p><span className="process-link">Open step <ArrowRight size={14}/></span></Link>)}</div></section>
     <section className="reference-cta"><div className="cta-box-illustration"><span>◒</span><span>▰</span><span>▰</span></div><div><span className="eyebrow">READY WHEN YOU ARE</span><h2>Ready to grow your business?</h2><p>Get started today and unlock wholesale sourcing tailored to your needs.</p></div><Link href="/quote" className="button button-primary">Request a Quote Now <ArrowRight size={16}/></Link></section>
   </main><footer className="reference-footer"><div className="footer-brand"><span className="brand-mountain">⌃</span><div><strong>Chadrey Wholesale</strong><small>Your trusted partner for wholesale success.</small></div></div><div className="footer-socials"><Link href="/contact" aria-label="Contact Chadrey on LinkedIn">in</Link><Link href="/contact" aria-label="Contact Chadrey on Facebook">f</Link><Link href="/contact" aria-label="Contact Chadrey on Instagram">◎</Link><Link href="/contact" aria-label="Email Chadrey">✉</Link></div><div className="footer-bottom"><span>© 2026 Chadrey Wholesale. All rights reserved.</span></div></footer></div>;
