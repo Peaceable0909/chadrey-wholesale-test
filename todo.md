@@ -257,3 +257,5 @@
 - [x] Add a clear pre-submit quote summary covering product, image/design, quantity, options, and requirements
 - [x] Show reference files, image labels, and complete quote summaries in My Quotes and admin quote management
 - [x] Revalidate the clarified quote workflow on desktop and mobile, then push the final changes to GitHub main
+
+- [x] Add an animated quote-submission success confirmation with clear next-step messaging and reduced-motion support
