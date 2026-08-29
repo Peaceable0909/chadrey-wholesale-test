@@ -267,3 +267,8 @@
 - [x] Run tests/build and push the merged visual design update to GitHub main
 
 - [x] Add product-shaped catalogue loading skeletons and a reduced-motion-safe loaded-results transition
+
+- [x] Add a consistent product-detail loading skeleton with responsive reduced-motion support
+- [x] Add an accessible Quick View modal to catalogue product cards without breaking card navigation or save controls
+- [x] Replace catalogue pagination behavior with a responsive Load More interaction for live and fallback products
+- [x] Validate the new loading, Quick View, and Load More states, then push the update to GitHub main
