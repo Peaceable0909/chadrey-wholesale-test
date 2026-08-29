@@ -272,3 +272,8 @@
 - [x] Add an accessible Quick View modal to catalogue product cards without breaking card navigation or save controls
 - [x] Replace catalogue pagination behavior with a responsive Load More interaction for live and fallback products
 - [x] Validate the new loading, Quick View, and Load More states, then push the update to GitHub main
+
+- [x] Add a swipeable and keyboard-accessible image carousel inside the catalogue Quick View modal
+- [x] Show a floating Back to Top button after users load more catalogue products
+- [x] Add a product-specific Related Products section to product-detail pages
+- [x] Validate carousel gestures, scroll behavior, related links, responsive layouts, and push the update to GitHub main
