@@ -265,3 +265,5 @@
 - [x] Merge the supplied cumulative visual design fixes across the 19 requested files without overwriting current functionality
 - [x] Validate mobile navigation, home hero order, catalogue toolbar/icons, contact CTA order, and admin access gates
 - [x] Run tests/build and push the merged visual design update to GitHub main
+
+- [x] Add product-shaped catalogue loading skeletons and a reduced-motion-safe loaded-results transition
