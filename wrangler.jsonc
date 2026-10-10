@@ -1,0 +1,17 @@
+{
+  // Cloudflare Workers config. The site is a static single-page app built into dist/public.
+  // The name must match the Worker connected in the Cloudflare dashboard.
+  "name": "chadrey-wholesale",
+  "compatibility_date": "2025-09-01",
+  // Cloudflare runs this before every deploy, so it does not depend on a build command set in the dashboard.
+  "build": {
+    "command": "pnpm build"
+  },
+  "assets": {
+    "directory": "./dist/public",
+    // Unknown paths (/products, /admin/quotes, ...) get index.html so the client-side router can handle them.
+    "not_found_handling": "single-page-application",
+    // The build also writes a folder per page (/products/index.html). Serve those at /products with no redirect to /products/.
+    "html_handling": "drop-trailing-slash"
+  }
+}
