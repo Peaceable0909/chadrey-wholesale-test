@@ -288,4 +288,7 @@
 - [x] Add `wrangler.jsonc` so the Cloudflare Workers build (`chadrey-wholesale`) builds the site and serves it as a single-page app from `dist/public`
 - [ ] Apply `supabase_product_pricing.sql` to the live Supabase project, then add prices to the existing products
 - [ ] Move the quotation review, messages, invoice payment, order tracking and fulfilment pages from the old numeric-id tRPC backend to Supabase so they work with Supabase quote requests
-- [ ] Decide whether the Manus runtime plugin is still needed in production; it adds about 367 KB to `index.html`
+- [x] Leave the Manus runtime plugin out of production builds (it added about 367 KB to every page); it still runs in local development
+
+- [x] Fix slow loading after the redesign: no web-font stylesheet blocking the page, the page HTML down from 369 KB to 2 KB, product photos requested only when they are about to be seen, the home page asks for 8 products instead of 24, and each page's code loads when it is opened
+- [ ] Shrink the photos already uploaded (phone originals are several MB each): either turn on Supabase image transformations (Pro plan) or add an admin tool that resizes existing photos
