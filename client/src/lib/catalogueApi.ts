@@ -14,7 +14,8 @@ export const PRODUCT_SELECT = "*,product_images(id,storage_path,public_url,is_pr
 export const PAGE_SIZE = 24;
 
 export async function fetchProductsPage(query: CatalogueQuery, page: number): Promise<ProductPage> {
-  const from = page * PAGE_SIZE;
+  const size = query.pageSize ?? PAGE_SIZE;
+  const from = page * size;
   let request = getSupabaseClient().from("products").select(PRODUCT_SELECT, { count: "exact" }).eq("is_active", true);
 
   if (query.category && query.category !== "All") request = request.eq("category", query.category);
@@ -26,7 +27,7 @@ export async function fetchProductsPage(query: CatalogueQuery, page: number): Pr
   else if (query.sort === "name") request = request.order("name", { ascending: true });
   else request = request.order("created_at", { ascending: false });
 
-  const { data, error, count } = await request.range(from, from + PAGE_SIZE - 1);
+  const { data, error, count } = await request.range(from, from + size - 1);
   if (error) throw error;
   const items = (data ?? []).map(mapProductRow);
   const total = count ?? from + items.length;

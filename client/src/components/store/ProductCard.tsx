@@ -23,6 +23,8 @@ type ProductCardProps = {
   /** Desktop only: a hover shortcut that previews the product without leaving the list. */
   onQuickView?: () => void;
   priority?: boolean;
+  /** How far outside the screen the photo may be before it loads; rails pass "0px" so only visible cards fetch photos. */
+  imageMargin?: string;
   className?: string;
 };
 
@@ -30,7 +32,7 @@ type ProductCardProps = {
  * Marketplace product tile: photo, name, price at the minimum order and the MOQ.
  * The whole card is one link (a stretched anchor), so the heart and quick view buttons stay separate targets.
  */
-export function ProductCard({ product, saved = false, onToggleSave, onQuickView, priority, className }: ProductCardProps) {
+export function ProductCard({ product, saved = false, onToggleSave, onQuickView, priority, imageMargin, className }: ProductCardProps) {
   const price = entryPrice(product.pricing);
   const label = `${product.name}${price !== null ? `, ${formatMoney(price, product.pricing.currency)} per ${product.pricing.unit}` : ", price on request"}`;
 
@@ -43,7 +45,7 @@ export function ProductCard({ product, saved = false, onToggleSave, onQuickView,
       <Link href={productHref(product.slug)} aria-label={label} className="absolute inset-0 z-10 rounded-card" />
 
       <div className="relative aspect-square overflow-hidden bg-fill-4">
-        <ProductImage product={product} priority={priority} className="transition-transform duration-500 md:group-hover:scale-[1.04]" />
+        <ProductImage product={product} priority={priority} margin={imageMargin} className="transition-transform duration-500 md:group-hover:scale-[1.04]" />
         <div className="absolute left-2.5 top-2.5 flex gap-1.5">
           {product.isSample ? (
             <Badge tone="gray" className="bg-surface/90 backdrop-blur">

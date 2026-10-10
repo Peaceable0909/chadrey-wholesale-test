@@ -19,6 +19,8 @@ type ProductGalleryProps = {
 export function ProductGallery({ product, className, rounded = true, compact = false }: ProductGalleryProps) {
   const scroller = React.useRef<HTMLDivElement>(null);
   const [index, setIndex] = React.useState(0);
+  // The thumbnails reuse the same large photos, so they wait until the main photo has arrived.
+  const [mainLoaded, setMainLoaded] = React.useState(false);
   const count = Math.max(1, product.images.length);
   const label = product.images[index]?.label;
 
@@ -48,7 +50,8 @@ export function ProductGallery({ product, className, rounded = true, compact = f
           className="no-scrollbar flex snap-x snap-mandatory overflow-x-auto overscroll-x-contain outline-offset-[-3px]">
           {Array.from({ length: count }, (_, position) => (
             <div key={position} className={cn("w-full shrink-0 snap-center", compact ? "aspect-[4/3]" : "aspect-square")} aria-label={`Photo ${position + 1} of ${count}`}>
-              <ProductImage product={product} index={position} fit="contain" priority={position === 0} />
+              {/* Only the first photo and the next one (one screen to the right) are requested up front. */}
+              <ProductImage product={product} index={position} fit="contain" priority={position === 0} margin="0px 100% 0px 100%" onLoaded={position === 0 ? () => setMainLoaded(true) : undefined} />
             </div>
           ))}
         </div>
@@ -82,7 +85,7 @@ export function ProductGallery({ product, className, rounded = true, compact = f
                 "press size-[68px] shrink-0 overflow-hidden rounded-[14px] bg-surface ring-offset-2 ring-offset-canvas transition-shadow",
                 position === index ? "ring-2 ring-tint" : "opacity-80 hover:opacity-100",
               )}>
-              <ProductImage product={product} index={position} />
+              <ProductImage product={product} index={position} margin="0px" hold={!mainLoaded} />
             </button>
           ))}
         </div>

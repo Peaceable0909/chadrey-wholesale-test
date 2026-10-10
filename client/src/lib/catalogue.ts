@@ -38,7 +38,14 @@ export type Product = {
 };
 
 export type CatalogueSort = "newest" | "moq" | "name";
-export type CatalogueQuery = { q: string; category: string; sort: CatalogueSort; slugs?: string[] };
+export type CatalogueQuery = {
+  q: string;
+  category: string;
+  sort: CatalogueSort;
+  slugs?: string[];
+  /** Products per page. Defaults to the catalogue page size; the home page only needs a handful. */
+  pageSize?: number;
+};
 export type ProductPage = { items: Product[]; total: number; hasMore: boolean };
 export type CategoryCount = { category: string; count: number };
 
