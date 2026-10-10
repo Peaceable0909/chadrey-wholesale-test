@@ -13,5 +13,7 @@
     "not_found_handling": "single-page-application",
     // The build also writes a folder per page (/products/index.html). Serve those at /products with no redirect to /products/.
     "html_handling": "drop-trailing-slash"
-  }
+  },
+  // Branch builds run "wrangler preview". The site needs no variables or bindings, so nothing differs from production.
+  "previews": {}
 }
