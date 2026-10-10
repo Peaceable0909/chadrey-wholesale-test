@@ -1,118 +1,201 @@
-import { useMemo, useRef, useState } from "react";
-import {ArrowLeft, Check, ImagePlus, Loader2, PackagePlus, Trash2, UploadCloud, ArrowRight, ArrowLeftToLine, ShieldCheck} from "lucide-react";
-import { Link, useLocation } from "wouter";
-import { getSupabaseClient, isSupabaseConfigured } from "@/lib/supabase";
+import * as React from "react";
+import { PackagePlus } from "lucide-react";
 import { useAuth } from "@/_core/hooks/useAuth";
-import FormattedDescription from "@/components/FormattedDescription";
+import { PhotoPicker, type PhotoDraft } from "@/components/admin/PhotoPicker";
+import { ProductFormSections } from "@/components/admin/ProductFormSections";
+import { Button, ButtonLink, Card, FormSection, Notice } from "@/components/ios";
+import { AdminLayout } from "@/components/layout/AdminLayout";
+import { PriceLabel } from "@/components/store/Price";
+import { ProductImage } from "@/components/store/ProductImage";
+import { useCategoryCounts } from "@/hooks/useCatalogue";
+import { usePageTitle } from "@/hooks/usePageTitle";
+import { useScrollTopWhen } from "@/hooks/useScrollTopWhen";
+import { prepareImage } from "@/lib/imageCompress";
+import { emptyDraft, fieldsFromDraft, MAX_PRODUCT_IMAGES, MIN_PRODUCT_IMAGES, type ProductDraft } from "@/lib/productDraft";
+import { createProductRecord, deleteProductRecord, findFreeSlug, insertImageRows, removeStoredFiles, uploadProductImages } from "@/lib/productWriteApi";
+import { productHref } from "@/lib/productRoute";
+import { slugOrFallback } from "@/lib/slug";
+import { errorMessage } from "@/lib/supabaseCompat";
+import { useQueryClient } from "@tanstack/react-query";
 
-type ImageDraft = { file: File; preview: string; label: string };
+type Progress = { stage: string; percent: number };
+type Published = { slug: string; name: string; coverUrl?: string; pricingSaved: boolean; fields: NonNullable<ReturnType<typeof fieldsFromDraft>["fields"]> };
 
-const csv = (value: string) => value.split(",").map(item => item.trim()).filter(Boolean);
-const buildOptionGroups = (colors: string, sizes: string, packaging: string, customization: string, customLabel: string, customOptions: string) => [{ key: "color", label: "Color", options: csv(colors) }, { key: "size", label: "Size", options: csv(sizes) }, { key: "packaging", label: "Packaging", options: csv(packaging) }, { key: "customization", label: "Customization", options: csv(customization) }, { key: customLabel.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-"), label: customLabel.trim(), options: csv(customOptions) }].filter(group => group.label && group.options.length);
+/** Turns a failed write into something an admin can act on. */
+function publishProblem(caught: unknown): string {
+  const code = (caught as { code?: string } | null)?.code;
+  if (code === "23505") return "A product with this web address already exists. Please try publishing again.";
+  return errorMessage(caught, "Unable to publish the product. Check your connection and try again.");
+}
 
 export default function AdminProductCreate() {
-  const [, navigate] = useLocation();
-  const { user, loading } = useAuth();
-  const [name, setName] = useState("");
-  const [slug, setSlug] = useState("");
-  const [description, setDescription] = useState("");
-  const [shortDescription, setShortDescription] = useState("");
-  const [category, setCategory] = useState("Apparel");
-  const [moq, setMoq] = useState("24");
-  const [colors, setColors] = useState("");
-  const [sizes, setSizes] = useState("");
-  const [packagingOptions, setPackagingOptions] = useState("");
-  const [customizationOptions, setCustomizationOptions] = useState("");
-  const [customOptionLabel, setCustomOptionLabel] = useState("");
-  const [customOptionValues, setCustomOptionValues] = useState("");
-  const [images, setImages] = useState<ImageDraft[]>([]);
-  const [primaryIndex, setPrimaryIndex] = useState(0);
-  const [error, setError] = useState("");
-  const [uploading, setUploading] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState(0);
-  const [uploadStage, setUploadStage] = useState("");
-  const descriptionRef = useRef<HTMLTextAreaElement>(null);
+  usePageTitle("Add product");
+  const { user } = useAuth();
+  const queryClient = useQueryClient();
+  const { categories } = useCategoryCounts();
+  const [draft, setDraft] = React.useState<ProductDraft>(emptyDraft);
+  const [photos, setPhotos] = React.useState<PhotoDraft[]>([]);
+  const [coverId, setCoverId] = React.useState<string | null>(null);
+  const [error, setError] = React.useState("");
+  const [progress, setProgress] = React.useState<Progress | null>(null);
+  const [published, setPublished] = React.useState<Published | null>(null);
+  const errorRef = React.useRef<HTMLDivElement>(null);
+  const busy = progress !== null;
 
-  const canSubmit = useMemo(() => Boolean(
-    name.trim() && slug.trim() && shortDescription.trim().length >= 10 && description.trim().length >= 20 && category.trim() &&
-      Number(moq) > 0 && images.length >= 2
-  ), [name, slug, shortDescription, description, category, moq, colors, sizes, packagingOptions, customizationOptions, images.length]);
+  React.useEffect(() => {
+    if (error) errorRef.current?.scrollIntoView({ block: "center", behavior: "smooth" });
+  }, [error]);
 
-  function selectImages(event: React.ChangeEvent<HTMLInputElement>) {
-    const selected = Array.from(event.target.files ?? []);
-    const accepted = selected.filter(file => file.type.startsWith("image/") && file.size <= 10 * 1024 * 1024);
-    const next = accepted.map(file => ({ file, preview: URL.createObjectURL(file), label: "" }));
-    setImages(current => [...current, ...next].slice(0, 30));
-    setError(accepted.length !== selected.length ? "Only image files up to 10 MB each were added." : "");
-    event.target.value = "";
-  }
+  useScrollTopWhen(published);
 
-  function applyDescriptionFormat(kind: "bold" | "bullet") {
-    const input = descriptionRef.current;
-    if (!input) return;
-    const start = input.selectionStart;
-    const end = input.selectionEnd;
-    const selected = description.slice(start, end) || (kind === "bold" ? "important detail" : "bullet point");
-    const replacement = kind === "bold" ? `**${selected}**` : selected.split("\\n").map(line => line ? `- ${line}` : line).join("\\n");
-    const next = `${description.slice(0, start)}${replacement}${description.slice(end)}`;
-    setDescription(next);
-    requestAnimationFrame(() => { input.focus(); const cursor = start + replacement.length; input.setSelectionRange(cursor, cursor); });
-  }
+  const patchDraft = (patch: Partial<ProductDraft>) => setDraft(current => ({ ...current, ...patch }));
+  const ready = draft.name.trim() && draft.category.trim() && photos.length >= MIN_PRODUCT_IMAGES;
 
-  function removeImage(index: number) {
-    setImages(current => {
-      const removed = current[index];
-      if (removed) URL.revokeObjectURL(removed.preview);
-      return current.filter((_, itemIndex) => itemIndex !== index);
-    });
-    setPrimaryIndex(current => current > index ? current - 1 : current === index ? 0 : current);
-  }
-
-  async function submit(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  async function publish() {
     setError("");
-    if (!isSupabaseConfigured()) return setError("Supabase is not configured for this environment.");
-    if (images.length < 2) return setError("Select at least 2 product images before publishing.");
-    if (primaryIndex >= images.length) return setError("Choose a primary image.");
+    const { fields, error: problem } = fieldsFromDraft(draft);
+    if (!fields) return setError(problem ?? "Check the product details.");
+    if (photos.length < MIN_PRODUCT_IMAGES) return setError(`Add at least ${MIN_PRODUCT_IMAGES} photos before publishing.`);
 
-    setUploading(true);
-    setUploadProgress(0);
-    setUploadStage("Preparing secure upload…");
-    const uploadedPaths: string[] = [];
+    let uploadedPaths: string[] = [];
+    let createdId: string | null = null;
     try {
-      const safeSlug = slug.trim().toLowerCase();
-      const client = getSupabaseClient();
-      const uploaded: Array<{ path: string; url: string }> = [];
-      for (let index = 0; index < images.length; index += 1) {
-        const { file } = images[index]!;
-        const path = `products/${safeSlug}/${String(index + 1).padStart(2, "0")}-${file.name.replace(/[^a-zA-Z0-9._-]/g, "-")}`;
-        setUploadStage(`Uploading image ${index + 1} of ${images.length}…`);
-        const { error: uploadError } = await client.storage.from("product-images").upload(path, file, { contentType: file.type, upsert: false });
-        if (uploadError) throw uploadError;
-        uploadedPaths.push(path);
-        uploaded.push({ path, url: client.storage.from("product-images").getPublicUrl(path).data.publicUrl });
-        setUploadProgress(Math.round(((index + 1) / images.length) * 80));
+      setProgress({ stage: "Preparing photos…", percent: 3 });
+      const prepared: File[] = [];
+      for (let index = 0; index < photos.length; index += 1) {
+        prepared.push(await prepareImage(photos[index].file));
+        setProgress({ stage: `Preparing photo ${index + 1} of ${photos.length}…`, percent: 3 + Math.round(((index + 1) / photos.length) * 17) });
       }
-      setUploadStage("Publishing catalogue record…");
-      const { data: product, error: productError } = await client.from("products").insert({ slug: safeSlug, name: name.trim(), description: description.trim(), short_description: shortDescription.trim(), category: category.trim(), moq: Number(moq), colors: csv(colors), sizes: csv(sizes), packaging_options: csv(packagingOptions), customization_options: csv(customizationOptions), option_groups: buildOptionGroups(colors, sizes, packagingOptions, customizationOptions, customOptionLabel, customOptionValues), created_by: user?.uid }).select("id").single();
-      if (productError) throw productError;
-      const { error: imageError } = await client.from("product_images").insert(uploaded.map((image, index) => ({ product_id: product.id, storage_path: image.path, public_url: image.url, alt_text: images[index].label.trim() || `${name.trim()} product image ${index + 1}`, label: images[index].label.trim() || null, sort_order: index, is_primary: index === primaryIndex })));
-      if (imageError) throw imageError;
-      setUploadProgress(100);
-      setUploadStage("Product published. Opening operations…");
-      window.setTimeout(() => navigate("/admin"), 350);
+
+      const slug = await findFreeSlug(slugOrFallback(fields.name));
+      const uploaded = await uploadProductImages(slug, prepared, 0, (done, total) =>
+        setProgress({ stage: `Uploading photo ${done} of ${total}…`, percent: 20 + Math.round((done / total) * 60) }),
+      );
+      uploadedPaths = uploaded.map(item => item.path);
+
+      setProgress({ stage: "Publishing product…", percent: 85 });
+      const saved = await createProductRecord(fields, slug, user?.uid);
+      createdId = saved.id;
+
+      const coverIndex = Math.max(0, photos.findIndex(photo => photo.id === coverId));
+      await insertImageRows(
+        saved.id,
+        fields.name,
+        uploaded.map((image, index) => ({ image, label: photos[index].label, isPrimary: index === coverIndex })),
+        0,
+      );
+
+      setProgress({ stage: "Done", percent: 100 });
+      void queryClient.invalidateQueries({ queryKey: ["catalogue"] });
+      void queryClient.invalidateQueries({ queryKey: ["category-counts"] });
+      void queryClient.invalidateQueries({ queryKey: ["admin-products"] });
+      setPublished({ slug, name: fields.name, coverUrl: uploaded[coverIndex]?.url, pricingSaved: saved.pricingSaved, fields });
     } catch (caught) {
-      if (uploadedPaths.length) await getSupabaseClient().storage.from("product-images").remove(uploadedPaths);
-      setError(caught instanceof Error ? caught.message : "Unable to create product. Check your connection and try again.");
-      setUploadStage("");
+      // Leave nothing half-finished behind: no product record without photos, no orphaned files.
+      try {
+        if (createdId) await deleteProductRecord(createdId, uploadedPaths);
+        else await removeStoredFiles(uploadedPaths);
+      } catch (cleanupError) {
+        console.error("Cleanup after failed publish:", cleanupError);
+      }
+      setError(publishProblem(caught));
     } finally {
-      window.setTimeout(() => setUploading(false), 400);
+      setProgress(null);
     }
   }
 
-  if (loading) return <div className="confirmation-page"><Loader2 className="spin" /><h1>Loading operations…</h1></div>;
-  if (!user) return <div className="confirmation-page admin-gate"><Link href="/" className="back-link"><ArrowLeftToLine size={14}/> Back to Chadrey Wholesale</Link><span className="success-mark neutral"><ShieldCheck size={26}/></span><span className="eyebrow">ADMIN OPERATIONS</span><h1>Admin sign-in required.</h1><p>Use your Supabase administrator account to access the operations workspace. If you don't have access yet, ask a Chadrey Wholesale administrator to add you.</p><Link href="/admin/login" className="button button-primary">Sign in to operations <ArrowRight size={16}/></Link></div>;
-  if (user.role !== "admin") return <div className="confirmation-page admin-gate"><Link href="/" className="back-link"><ArrowLeftToLine size={14}/> Back to Chadrey Wholesale</Link><span className="success-mark neutral"><ShieldCheck size={26}/></span><span className="eyebrow">ADMIN OPERATIONS</span><h1>Access restricted.</h1><p>Your account does not have product-management permissions.</p><Link href="/dashboard" className="button button-secondary">Back to workspace</Link></div>;
+  function addAnother() {
+    photos.forEach(photo => URL.revokeObjectURL(photo.preview));
+    // Goods from the same dealer usually share a category, currency and unit, so keep those.
+    setDraft({ ...emptyDraft(), category: draft.category, moq: draft.moq, price: { ...emptyDraft().price, currency: draft.price.currency, unit: draft.price.unit } });
+    setPhotos([]);
+    setCoverId(null);
+    setPublished(null);
+    setError("");
+    window.scrollTo({ top: 0 });
+  }
 
-  return <div className="workspace"><aside className="workspace-sidebar admin-sidebar"><Link href="/" className="workspace-logo"><span className="brand-mark">C</span><span>CHADREY<small>OPERATIONS</small></span></Link><span className="sidebar-label">OPERATIONS</span><Link className="sidebar-link" href="/admin">Overview</Link><Link className="sidebar-link active" href="/admin/products/new"><PackagePlus size={16}/> Add product</Link><div className="sidebar-bottom"><Link className="sidebar-link" href="/">← Back to store</Link></div></aside><main className="workspace-main product-create-main"><Link href="/admin" className="back-link"><ArrowLeft size={15}/> Back to operations</Link><header className="workspace-header"><div><span className="eyebrow">DIRECTORY / PRODUCTS</span><h1>Add a wholesale product.</h1><p>Publish a complete catalogue entry with clear buying requirements and a strong primary image.</p></div></header><form className="product-create-form" onSubmit={submit}><section className="workspace-panel"><div className="panel-heading"><div><span className="eyebrow">01 / PRODUCT DETAILS</span><h2>Core catalogue information</h2></div><span className="status-pill green">Draft</span></div><div className="form-grid product-form-grid"><label className="field wide">Product name<input value={name} onChange={event => setName(event.target.value)} placeholder="e.g. Premium heavyweight hoodie" required /></label><label className="field">URL slug<input value={slug} onChange={event => setSlug(event.target.value.toLowerCase().replace(/\s+/g, "-"))} placeholder="premium-heavyweight-hoodie" pattern="[a-z0-9]+(?:-[a-z0-9]+)*" required /></label><label className="field">Category<select value={category} onChange={event => setCategory(event.target.value)}><option>Apparel</option><option>Bags</option><option>Accessories</option><option>Home & lifestyle</option><option>Custom</option></select></label><label className="field">Minimum order quantity<input type="number" min="1" value={moq} onChange={event => setMoq(event.target.value)} required /></label><label className="field wide">Short catalogue description<input value={shortDescription} onChange={event => setShortDescription(event.target.value)} placeholder="One concise sentence for catalogue cards" minLength={10} maxLength={180} required /><small>This is shown on the products page. The full description appears on the product page.</small></label><label className="field wide">Full product description<div className="description-editor-toolbar" role="toolbar" aria-label="Description formatting"><button type="button" onClick={() => applyDescriptionFormat("bold")} disabled={uploading}><strong>B</strong> Bold</button><button type="button" onClick={() => applyDescriptionFormat("bullet")} disabled={uploading}>• Bullet list</button><span>Supports **bold** and bullet lines</span></div><textarea ref={descriptionRef} value={description} onChange={event => setDescription(event.target.value)} placeholder="Describe the product, material, use case, and wholesale value… Add bullet points for key benefits." minLength={20} rows={7} required /><div className="description-preview"><small>Preview</small><FormattedDescription text={description}/></div></label><label className="field">Available colors<input value={colors} onChange={event => setColors(event.target.value)} placeholder="Black, Stone, Navy" /><small>Optional. Leave blank when not applicable.</small></label><label className="field">Available sizes<input value={sizes} onChange={event => setSizes(event.target.value)} placeholder="S, M, L, XL" /><small>Optional. Leave blank for products without sizes.</small></label><label className="field">Packaging options<input value={packagingOptions} onChange={event => setPackagingOptions(event.target.value)} placeholder="Bulk cartons, Individual polybags" /><small>Optional.</small></label><label className="field">Customization options<input value={customizationOptions} onChange={event => setCustomizationOptions(event.target.value)} placeholder="Private label, Embroidery" /><small>Optional.</small></label><label className="field">Custom form label<input value={customOptionLabel} onChange={event => setCustomOptionLabel(event.target.value)} placeholder="e.g. Capacity, Style, Finish" /><small>Use for products that come in different forms.</small></label><label className="field">Custom form values<input value={customOptionValues} onChange={event => setCustomOptionValues(event.target.value)} placeholder="500 ml, 750 ml, 1 L" /><small>Separate options with commas.</small></label></div></section><section className="workspace-panel"><div className="panel-heading"><div><span className="eyebrow">02 / PRODUCT IMAGERY</span><h2>Upload the product range</h2><p className="panel-helper">Select 2–30 images at once. Choose one image as the primary image for the shop card and detail page.</p></div><span className={`status-pill ${images.length >= 2 ? "green" : "amber"}`}>{images.length}/2 minimum</span></div><label className="bulk-upload-zone"><UploadCloud size={25}/><strong>Choose product images</strong><span>JPG, PNG, or WEBP · up to 10 MB each · 2 minimum</span><input type="file" accept="image/jpeg,image/png,image/webp" multiple onChange={selectImages} /></label>{images.length > 0 && <div className="image-upload-grid">{images.map((image, index) => <div className={`image-upload-card ${index === primaryIndex ? "primary" : ""}`} key={`${image.file.name}-${index}`}><img src={image.preview} alt={`Product preview ${index + 1}`} /><input className="image-label-input" value={image.label} onChange={event => setImages(current => current.map((item, itemIndex) => itemIndex === index ? { ...item, label: event.target.value } : item))} placeholder={`e.g. Blue design ${index + 1}`} aria-label={`Label for product image ${index + 1}`}/><div className="image-upload-actions"><button type="button" className="image-primary-button" onClick={() => setPrimaryIndex(index)} aria-pressed={index === primaryIndex}>{index === primaryIndex ? <><Check size={13}/> Primary</> : "Set as primary"}</button><button type="button" className="image-remove-button" onClick={() => removeImage(index)} aria-label={`Remove image ${index + 1}`}><Trash2 size={14}/></button></div></div>)}</div>}{images.length < 2 && <p className="form-hint"><ImagePlus size={15}/> Add {2 - images.length} more image{2 - images.length === 1 ? "" : "s"} to continue.</p>}</section>{error && <p className="form-error" role="alert">{error}</p>}{uploading && <div className="upload-progress-panel" role="status" aria-live="polite"><div className="upload-progress-spinner"><Loader2 className="spin" size={24}/></div><div><strong>{uploadStage || "Working…"}</strong><span>Your product is being saved securely. Please keep this page open.</span><div className="upload-progress-track"><span style={{ width: `${uploadProgress}%` }}/></div><small>{uploadProgress}% complete</small></div></div>}<div className="product-form-footer"><Link href="/admin" className="button button-secondary">Cancel</Link><button type="submit" className="button button-primary" disabled={!canSubmit || uploading}>{uploading ? <><Loader2 className="spin" size={16}/> Uploading & publishing…</> : <><PackagePlus size={16}/> Publish product</>}</button></div></form></main></div>;
+  if (published) {
+    return (
+      <AdminLayout title="Product published" width="form">
+        <Card className="p-6 text-center">
+          <span className="mx-auto mb-5 grid size-20 place-items-center rounded-full bg-ios-green/15" style={{ animation: "pop-in 520ms cubic-bezier(0.2, 0.8, 0.2, 1) both" }}>
+            <svg viewBox="0 0 24 24" className="size-10 text-ios-green" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <path d="M5 12.5l4.5 4.5L19 7" strokeDasharray="24" style={{ animation: "draw-check 450ms 250ms ease-out both" }} />
+            </svg>
+          </span>
+          <div className="mx-auto flex max-w-xs items-center gap-3 rounded-group bg-canvas p-3 text-left">
+            <span className="size-14 shrink-0 overflow-hidden rounded-[12px] bg-fill-4">
+              <ProductImage product={{ name: published.name, category: published.fields.category, images: published.coverUrl ? [{ id: "cover", url: published.coverUrl, storagePath: null, label: null, alt: null, isPrimary: true, sortOrder: 0 }] : [] }} />
+            </span>
+            <div className="min-w-0">
+              <p className="truncate text-headline font-semibold">{published.name}</p>
+              <PriceLabel pricing={published.fields.pricing} />
+            </div>
+          </div>
+          <p className="mt-4 text-body text-label-2">It is live in the store now.</p>
+          {!published.pricingSaved && (
+            <Notice tone="orange" className="mt-4 text-left">
+              The product was saved, but its prices were not, because the database does not have the price columns yet. Run <code className="font-mono text-footnote">supabase_product_pricing.sql</code> in Supabase, then add the prices from the product editor.
+            </Notice>
+          )}
+          <div className="mt-6 flex flex-col gap-3">
+            <Button size="lg" full onClick={addAnother}>
+              <PackagePlus className="size-5" aria-hidden /> Add another product
+            </Button>
+            <ButtonLink href={productHref(published.slug)} variant="gray" size="lg" full>
+              View in store
+            </ButtonLink>
+            <ButtonLink href="/admin/products" variant="plain" size="lg" full>
+              All products
+            </ButtonLink>
+          </div>
+        </Card>
+      </AdminLayout>
+    );
+  }
+
+  return (
+    <AdminLayout title="Add product" subtitle="Photos first, then the details. Prices are optional and can be changed any time." back={{ href: "/admin/products", label: "Products" }} width="form" tabBar={false}>
+      <div className="space-y-6 pb-28">
+        <FormSection title="Photos">
+          <PhotoPicker
+            photos={photos}
+            coverId={coverId}
+            onChange={(next, cover) => {
+              setPhotos(next);
+              setCoverId(cover);
+            }}
+            min={MIN_PRODUCT_IMAGES}
+            max={MAX_PRODUCT_IMAGES}
+            disabled={busy}
+            onProblem={setError}
+          />
+        </FormSection>
+
+        <ProductFormSections draft={draft} onChange={patchDraft} knownCategories={categories.map(item => item.category)} showVisibility disabled={busy} />
+
+        <div ref={errorRef}>{error && <Notice tone="red">{error}</Notice>}</div>
+      </div>
+
+      <div className="material hairline-t pb-safe fixed inset-x-0 bottom-0 z-40 lg:left-64">
+        <div className="gutter mx-auto max-w-[760px] py-3">
+          {progress && (
+            <div className="mb-2.5" role="status" aria-live="polite">
+              <div className="flex items-center justify-between text-footnote text-label-2">
+                <span>{progress.stage}</span>
+                <span className="tabular-nums">{progress.percent}%</span>
+              </div>
+              <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-fill-2">
+                <div className="h-full rounded-full bg-tint transition-[width] duration-300" style={{ width: `${progress.percent}%` }} />
+              </div>
+            </div>
+          )}
+          <Button size="lg" full loading={busy} disabled={!ready} onClick={() => void publish()}>
+            Publish product
+          </Button>
+        </div>
+      </div>
+    </AdminLayout>
+  );
 }

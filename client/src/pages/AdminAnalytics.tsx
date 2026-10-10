@@ -1,15 +1,52 @@
-import {ArrowLeft, BarChart3, ClipboardList, FileCheck2, FileText, PackageCheck, Users, ArrowRight, ArrowLeftToLine, ShieldCheck} from "lucide-react";
-import { Link } from "wouter";
+import { useQuery } from "@tanstack/react-query";
+import { ClipboardList, FileCheck2, FileText, PackageCheck, Users } from "lucide-react";
 import { useAuth } from "@/_core/hooks/useAuth";
-import { trpc } from "@/lib/trpc";
+import { Card, ListGroup, ListRow, Notice } from "@/components/ios";
+import { AdminLayout } from "@/components/layout/AdminLayout";
+import { usePageTitle } from "@/hooks/usePageTitle";
+import { fetchAdminCounts } from "@/lib/accountApi";
 
 export default function AdminAnalytics() {
-  const { user, loading } = useAuth();
-  const counts = trpc.quotes.counts.useQuery(undefined, { enabled: user?.role === "admin" });
-  const quotes = trpc.quotes.adminList.useQuery(undefined, { enabled: user?.role === "admin" });
-  if (loading) return <div className="confirmation-page"><span className="eyebrow">ANALYTICS</span><h1>Loading analytics…</h1></div>;
-  if (!user) return <div className="confirmation-page admin-gate"><Link href="/" className="back-link"><ArrowLeftToLine size={14}/> Back to Chadrey Wholesale</Link><span className="success-mark neutral"><ShieldCheck size={26}/></span><span className="eyebrow">ANALYTICS</span><h1>Admin sign-in required.</h1><p>Use your Supabase administrator account to access the operations workspace. If you don't have access yet, ask a Chadrey Wholesale administrator to add you.</p><Link href="/admin/login" className="button button-primary">Sign in to operations <ArrowRight size={16}/></Link></div>;
-  if (user.role !== "admin") return <div className="confirmation-page admin-gate"><Link href="/" className="back-link"><ArrowLeftToLine size={14}/> Back to Chadrey Wholesale</Link><span className="success-mark neutral"><ShieldCheck size={26}/></span><span className="eyebrow">ANALYTICS</span><h1>Access restricted.</h1><p>This workspace is available to Chadrey Wholesale administrators only.</p><Link href="/dashboard" className="button button-secondary">Back to workspace</Link></div>;
-  const pending = quotes.data?.filter(item => item.status === "pending").length ?? 0;
-  return <div className="workspace"><aside className="workspace-sidebar admin-sidebar"><Link href="/" className="workspace-logo"><span className="brand-mark">C</span><span>CHADREY<small>OPERATIONS</small></span></Link><span className="sidebar-label">OPERATIONS</span><Link className="sidebar-link" href="/admin"><ClipboardList size={16}/> Overview</Link><Link className="sidebar-link active" href="/admin/analytics"><BarChart3 size={16}/> Analytics</Link><Link className="sidebar-link" href="/admin/users"><Users size={16}/> Users</Link><div className="sidebar-bottom"><Link className="sidebar-link" href="/">← Back to store</Link></div></aside><main className="workspace-main"><Link href="/admin" className="back-link"><ArrowLeft size={15}/> Back to operations</Link><header className="workspace-header"><div><span className="eyebrow">OPERATIONS / ANALYTICS</span><h1>See what is moving.</h1><p>Live counts from the current quote and order records. No sample data is shown.</p></div></header><section className="dashboard-grid admin-stats"><Link href="/admin" className="summary-card summary-highlight summary-card-link"><span className="summary-icon"><ClipboardList size={17}/></span><span>Quote requests</span><strong>{counts.data?.quoteRequests ?? 0}</strong><small>Open quote inbox</small></Link><Link href="/admin/quote" className="summary-card summary-card-link"><span className="summary-icon"><FileCheck2 size={17}/></span><span>Quotations</span><strong>{counts.data?.quotations ?? 0}</strong><small>Open quotation composer</small></Link><Link href="/admin" className="summary-card summary-card-link"><span className="summary-icon"><FileText size={17}/></span><span>Invoices</span><strong>{counts.data?.invoices ?? 0}</strong><small>Review billing workflow</small></Link><Link href="/admin/fulfilment" className="summary-card summary-card-link"><span className="summary-icon"><PackageCheck size={17}/></span><span>Orders</span><strong>{counts.data?.orders ?? 0}</strong><small>Open fulfilment</small></Link></section><section className="workspace-columns analytics-columns"><section className="workspace-panel"><div className="panel-heading"><div><span className="eyebrow">CURRENT SIGNAL</span><h2>Requests awaiting review</h2></div></div><div className="analytics-highlight"><strong>{pending}</strong><span>pending quote request{pending === 1 ? "" : "s"}</span></div><Link href="/admin" className="panel-footer">Review quote requests <ArrowLeft size={15}/></Link></section><section className="workspace-panel"><div className="panel-heading"><div><span className="eyebrow">DIRECTORY</span><h2>Account access</h2></div></div><p className="analytics-copy">Manage who can access the operations workspace and keep customer accounts separate from administrators.</p><Link href="/admin/users" className="panel-footer">Manage users <Users size={15}/></Link></section></section></main></div>;
+  usePageTitle("Analytics");
+  const { user } = useAuth();
+  const counts = useQuery({ queryKey: ["admin-counts"], queryFn: fetchAdminCounts, enabled: user?.role === "admin", staleTime: 30_000 });
+  const data = counts.data;
+
+  const tiles = [
+    { label: "Quote requests", value: data?.quoteRequests, icon: ClipboardList },
+    { label: "Quotations", value: data?.quotations, icon: FileCheck2 },
+    { label: "Invoices", value: data?.invoices, icon: FileText },
+    { label: "Orders", value: data?.orders, icon: PackageCheck },
+  ];
+
+  return (
+    <AdminLayout title="Analytics" subtitle="Live counts from your database. Nothing here is sample data.">
+      <div className="space-y-7">
+        {counts.isError && <Notice tone="red">We could not load the counts. Try again in a moment.</Notice>}
+
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+          {tiles.map(tile => (
+            <Card key={tile.label} className="p-4">
+              <tile.icon className="size-5 text-tint-text" aria-hidden />
+              <p className="mt-3 text-largetitle font-bold tabular-nums">{tile.value ?? "–"}</p>
+              <p className="text-footnote font-medium text-label-2">{tile.label}</p>
+            </Card>
+          ))}
+        </div>
+
+        <Card className="flex items-baseline justify-between gap-4 p-5">
+          <div>
+            <p className="text-footnote font-medium uppercase tracking-wide text-label-2">Awaiting your review</p>
+            <p className="mt-1 text-subhead text-label-2">Quote requests that have not been quoted yet</p>
+          </div>
+          <p className="text-largetitle font-bold tabular-nums">{data?.pendingRequests ?? "–"}</p>
+        </Card>
+
+        <ListGroup>
+          <ListRow href="/admin/quotes" icon={<ClipboardList />} tone="orange" title="Review quote requests" chevron />
+          <ListRow href="/admin/users" icon={<Users />} tone="purple" title="Manage who has admin access" chevron />
+        </ListGroup>
+      </div>
+    </AdminLayout>
+  );
 }

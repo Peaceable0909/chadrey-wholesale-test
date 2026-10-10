@@ -1,56 +1,201 @@
-import { useEffect, useMemo, useState } from "react";
-import {ArrowLeft, ChevronDown, ChevronRight, Image as ImageIcon, Loader2, MessageSquare, PackageSearch, ArrowRight, ArrowLeftToLine, ShieldCheck} from "lucide-react";
-import { Link } from "wouter";
+import * as React from "react";
+import { useQuery } from "@tanstack/react-query";
+import { ClipboardList, Inbox, Mail, MapPin, MessageSquare, Phone } from "lucide-react";
+import { useSearchParams } from "wouter";
 import { useAuth } from "@/_core/hooks/useAuth";
-import { getSupabaseClient } from "@/lib/supabase";
+import { BackLink, Badge, ButtonLink, Card, EmptyState, ListGroup, ListRow, Notice, StatusBadge } from "@/components/ios";
+import { AdminLayout } from "@/components/layout/AdminLayout";
+import { ProductImage } from "@/components/store/ProductImage";
+import { usePageTitle } from "@/hooks/usePageTitle";
+import { formatDate, formatDateTime, formatMoney, formatQty } from "@/lib/format";
+import { lineTotal, unitPriceFor } from "@/lib/pricing";
+import { OTHER } from "@/lib/quote";
+import { fetchQuoteInbox, type InboxItem, type InboxRequest } from "@/lib/quoteInboxApi";
+import { errorMessage } from "@/lib/supabaseCompat";
+import { cn } from "@/lib/utils";
 
-type RequestRow = { id: string; ref: string; status: string; customer_id: string; requirements: string | null; company_name: string | null; contact_email: string | null; contact_phone: string | null; whatsapp: string | null; delivery_address: string | null; created_at: string };
-type ItemRow = { id: string; quote_request_id: string; product_id: string; quantity: number; color: string; size: string; packaging: string; customization: string; option_selections: Record<string, string> | null; custom_form_value: string | null; requirements: string | null; preferred_image_ids: string[] | null };
-type ProductRow = { id: string; name: string; category: string; moq: number; product_images: Array<{ id: string; public_url: string; sort_order: number }> };
+const meaningful = (value: string | null | undefined): value is string => Boolean(value && value.trim());
 
-type RequestDetails = RequestRow & { items: Array<ItemRow & { product?: ProductRow }> };
-const meaningful = (value: string | null | undefined) => Boolean(value && value.trim());
+function LineCard({ item, index }: { item: InboxItem; index: number }) {
+  const product = item.product;
+  const preferred = new Set(item.preferred_image_ids ?? []);
+  const photos = product?.images.filter(image => preferred.has(image.id)) ?? [];
+  const labelFor = (key: string) => product?.optionGroups.find(group => group.key === key)?.label ?? key.replace(/-/g, " ");
+  const chosen = Object.entries(item.option_selections ?? {}).filter(([, value]) => meaningful(value) && value !== OTHER);
+  const unit = product ? unitPriceFor(product.pricing, item.quantity) : null;
+  const total = product ? lineTotal(product.pricing, item.quantity) : null;
+
+  return (
+    <Card className="overflow-hidden">
+      <div className="flex items-start gap-3 p-4">
+        {product ? (
+          <span className="size-14 shrink-0 overflow-hidden rounded-[12px] bg-fill-4">
+            <ProductImage product={product} />
+          </span>
+        ) : (
+          <span className="size-14 shrink-0 rounded-[12px] bg-fill-4" />
+        )}
+        <div className="min-w-0 flex-1">
+          <p className="text-caption font-semibold uppercase tracking-wider text-label-2">Item {index + 1}</p>
+          <h3 className="text-headline font-semibold">{product?.name ?? "Product no longer available"}</h3>
+          <p className="text-subhead text-label-2">
+            {product?.category ? `${product.category} · ` : ""}Quantity {formatQty(item.quantity, product?.pricing.unit)}
+            {product ? ` · MOQ ${product.moq}` : ""}
+          </p>
+        </div>
+      </div>
+
+      <div className="space-y-3.5 border-t border-separator p-4">
+        {unit !== null && total !== null && product && (
+          <p className="rounded-control bg-tint-soft px-3.5 py-2.5 text-subhead text-tint-text">
+            Price list: <span className="font-semibold">{formatMoney(unit, product.pricing.currency)}</span> / {product.pricing.unit} · <span className="font-semibold">{formatMoney(total, product.pricing.currency)}</span> for {formatQty(item.quantity, product.pricing.unit)}
+          </p>
+        )}
+
+        {photos.length > 0 && (
+          <div className="no-scrollbar -mx-1 flex gap-2 overflow-x-auto p-1">
+            {photos.map(image => (
+              <img key={image.id} src={image.url} alt={image.label || `${product?.name} preferred view`} className="size-16 shrink-0 rounded-[12px] bg-fill-4 object-cover" />
+            ))}
+          </div>
+        )}
+
+        <div className="flex flex-wrap gap-2">
+          {chosen.map(([key, value]) => (
+            <Badge key={key} tone="gray" className="h-7 px-3 text-footnote">
+              {labelFor(key)}: {value}
+            </Badge>
+          ))}
+          {meaningful(item.custom_form_value) && (
+            <Badge tone="orange" className="h-7 px-3 text-footnote">
+              Other: {item.custom_form_value}
+            </Badge>
+          )}
+          {!chosen.length && !meaningful(item.custom_form_value) && <span className="text-subhead text-label-2">No options specified</span>}
+        </div>
+
+        <p className={cn("whitespace-pre-wrap text-body", !meaningful(item.requirements) && "text-label-2")}>{meaningful(item.requirements) ? item.requirements : "No product-specific notes."}</p>
+      </div>
+    </Card>
+  );
+}
+
+function RequestDetail({ request }: { request: InboxRequest }) {
+  const whatsappDigits = request.whatsapp?.replace(/[^0-9]/g, "");
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <p className="text-footnote font-semibold uppercase tracking-wider text-label-2">Request</p>
+          <h2 className="text-title2 font-bold tabular-nums">{request.ref}</h2>
+          <p className="text-subhead text-label-2">Received {formatDateTime(request.created_at)}</p>
+        </div>
+        <StatusBadge status={request.status} className="h-7 px-3 text-footnote" />
+      </div>
+
+      <ListGroup header="Customer">
+        <ListRow icon={<ClipboardList />} tone="blue" title={request.company_name || "No company given"} subtitle="Company" />
+        {meaningful(request.contact_email) && <ListRow href={`mailto:${request.contact_email}`} icon={<Mail />} tone="indigo" title={request.contact_email} subtitle="Email" chevron />}
+        {meaningful(request.contact_phone) && <ListRow href={`tel:${request.contact_phone}`} icon={<Phone />} tone="green" title={request.contact_phone} subtitle="Phone" chevron />}
+        {whatsappDigits && <ListRow href={`https://wa.me/${whatsappDigits}`} icon={<MessageSquare />} tone="teal" title={request.whatsapp!} subtitle="WhatsApp" chevron />}
+        <ListRow icon={<MapPin />} tone="orange" wrap title={request.delivery_address || "No delivery address given"} subtitle="Delivery address" />
+      </ListGroup>
+
+      <section>
+        <h3 className="px-4 pb-2 text-footnote font-medium uppercase tracking-wide text-label-2">Customer brief</h3>
+        <Card className="p-4">
+          <p className={cn("whitespace-pre-wrap text-body", !meaningful(request.requirements) && "text-label-2")}>{request.requirements || "No overall brief was provided."}</p>
+        </Card>
+      </section>
+
+      <section className="space-y-3">
+        <h3 className="px-4 text-footnote font-medium uppercase tracking-wide text-label-2">Products requested</h3>
+        {request.items.length === 0 ? <Card className="p-4 text-subhead text-label-2">This request has no product lines.</Card> : request.items.map((item, index) => <LineCard key={item.id} item={item} index={index} />)}
+      </section>
+
+      <ButtonLink href={`/admin/quote?quoteId=${request.id}`} size="lg" full>
+        Prepare quotation
+      </ButtonLink>
+    </div>
+  );
+}
 
 export default function AdminQuoteRequests() {
-  const { user, loading } = useAuth();
-  const [requests, setRequests] = useState<RequestDetails[]>([]);
-  const [selectedId, setSelectedId] = useState<string>("");
-  const [loadingRequests, setLoadingRequests] = useState(false);
-  const [error, setError] = useState("");
+  usePageTitle("Quote requests");
+  const { user } = useAuth();
+  const [params, setParams] = useSearchParams();
+  const inbox = useQuery({ queryKey: ["quote-inbox"], queryFn: fetchQuoteInbox, enabled: user?.role === "admin", staleTime: 20_000 });
+  const requests = inbox.data ?? [];
+  const selectedId = params.get("id");
+  const selected = requests.find(request => request.id === selectedId) ?? null;
 
-  useEffect(() => {
-    if (user?.role !== "admin") return;
-    let active = true;
-    setLoadingRequests(true);
-    void (async () => {
-      const client = getSupabaseClient();
-      const [requestResult, itemResult, productResult] = await Promise.all([
-        client.from("quote_requests").select("id,ref,status,customer_id,requirements,company_name,contact_email,contact_phone,whatsapp,delivery_address,created_at").order("created_at", { ascending: false }),
-        client.from("quote_request_items").select("id,quote_request_id,product_id,quantity,color,size,packaging,customization,option_selections,custom_form_value,requirements,preferred_image_ids"),
-        client.from("products").select("id,name,category,moq,product_images(id,public_url,sort_order)")
-      ]);
-      if (!active) return;
-      const requestError = requestResult.error || itemResult.error || productResult.error;
-      if (requestError) { setError(requestError.message); setLoadingRequests(false); return; }
-      const products = new Map(((productResult.data || []) as ProductRow[]).map(product => [product.id, product]));
-      const itemsByRequest = new Map<string, Array<ItemRow & { product?: ProductRow }>>();
-      for (const item of (itemResult.data || []) as ItemRow[]) {
-        const current = itemsByRequest.get(item.quote_request_id) || [];
-        current.push({ ...item, product: products.get(item.product_id) });
-        itemsByRequest.set(item.quote_request_id, current);
-      }
-      const next = ((requestResult.data || []) as RequestRow[]).map(request => ({ ...request, items: itemsByRequest.get(request.id) || [] }));
-      setRequests(next);
-      setSelectedId(current => current || next[0]?.id || "");
-      setLoadingRequests(false);
-    })();
-    return () => { active = false; };
-  }, [user]);
+  // On wide screens the detail pane is always visible, so open the newest request by default.
+  React.useEffect(() => {
+    if (!selected && requests.length && window.matchMedia("(min-width: 1024px)").matches) {
+      setParams(new URLSearchParams({ id: requests[0].id }), { replace: true });
+    }
+  }, [requests, selected]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const selected = useMemo(() => requests.find(request => request.id === selectedId), [requests, selectedId]);
-  if (loading) return <div className="confirmation-page"><Loader2 className="spin"/><h1>Loading operations…</h1></div>;
-  if (!user) return <div className="confirmation-page admin-gate"><Link href="/" className="back-link"><ArrowLeftToLine size={14}/> Back to Chadrey Wholesale</Link><span className="success-mark neutral"><ShieldCheck size={26}/></span><span className="eyebrow">QUOTE INBOX</span><h1>Admin sign-in required.</h1><p>Use your Supabase administrator account to access the operations workspace. If you don't have access yet, ask a Chadrey Wholesale administrator to add you.</p><Link href="/admin/login" className="button button-primary">Sign in to operations <ArrowRight size={16}/></Link></div>;
-  if (user.role !== "admin") return <div className="confirmation-page admin-gate"><Link href="/" className="back-link"><ArrowLeftToLine size={14}/> Back to Chadrey Wholesale</Link><span className="success-mark neutral"><ShieldCheck size={26}/></span><span className="eyebrow">ADMIN OPERATIONS</span><h1>Access restricted.</h1><p>This workspace is available to Chadrey Wholesale administrators only.</p><Link href="/dashboard" className="button button-secondary">Back to workspace</Link></div>;
+  const open = (id: string) => setParams(new URLSearchParams({ id }));
 
-  return <div className="workspace"><aside className="workspace-sidebar admin-sidebar"><Link href="/" className="workspace-logo"><span className="brand-mark">C</span><span>CHADREY<small>OPERATIONS</small></span></Link><span className="sidebar-label">OPERATIONS</span><Link className="sidebar-link" href="/admin">Overview</Link><Link className="sidebar-link active" href="/admin/quotes"><PackageSearch size={16}/> Quote requests</Link><Link className="sidebar-link" href="/admin/quote"><MessageSquare size={16}/> Quotations</Link><span className="sidebar-label">DIRECTORY</span><Link className="sidebar-link" href="/admin/products">Products</Link><Link className="sidebar-link" href="/admin/users">Users</Link><div className="sidebar-bottom"><Link className="sidebar-link" href="/">← Back to store</Link></div></aside><main className="workspace-main admin-quote-main"><header className="workspace-header compact-workspace-header"><div><Link href="/admin" className="back-link"><ArrowLeft size={15}/> Back to operations</Link><span className="eyebrow">OPERATIONS / QUOTE INBOX</span><h1>Review quote requests.</h1><p>Read the customer brief and product preferences before preparing pricing.</p></div></header>{error && <p className="form-error" role="alert">{error}</p>}{loadingRequests ? <div className="admin-inline-loading"><Loader2 className="spin" size={18}/> Loading quote requests…</div> : requests.length === 0 ? <section className="workspace-panel empty-state"><PackageSearch size={26}/><h3>No live quote requests</h3><p>New customer requests will appear here once submitted.</p></section> : <div className="quote-review-layout"><section className="workspace-panel quote-inbox-list"><div className="panel-heading"><div><span className="eyebrow">INBOX</span><h2>{requests.length} request{requests.length === 1 ? "" : "s"}</h2></div></div>{requests.map(request => <button type="button" className={`quote-inbox-row ${selectedId === request.id ? "selected" : ""}`} key={request.id} onClick={() => setSelectedId(request.id)}><div><strong>{request.ref}</strong><span>{request.company_name || request.contact_email || "Customer account"}</span><small>{new Date(request.created_at).toLocaleDateString()} · {request.items.length} line{request.items.length === 1 ? "" : "s"}</small></div><span className={`status-pill ${request.status === "pending" ? "amber" : "green"}`}>{request.status}</span>{selectedId === request.id ? <ChevronDown size={16}/> : <ChevronRight size={16}/>}</button>)}</section>{selected && <section className="workspace-panel quote-review-detail"><div className="panel-heading"><div><span className="eyebrow">REQUEST / {selected.ref}</span><h2>{selected.company_name || "Customer request"}</h2><p className="panel-helper">Received {new Date(selected.created_at).toLocaleString()}</p></div><span className={`status-pill ${selected.status === "pending" ? "amber" : "green"}`}>{selected.status}</span></div><div className="quote-review-content"><div className="review-contact-grid"><div><span>Contact</span><strong>{selected.contact_email || "Not provided"}</strong><small>{selected.contact_phone || selected.whatsapp || "No phone provided"}</small></div><div><span>Delivery</span><strong>{selected.delivery_address || "Not provided"}</strong></div></div><div className="review-brief"><span className="editor-section-label">CUSTOMER BRIEF</span><p>{selected.requirements || "No overall brief was provided."}</p></div><div className="review-lines"><span className="editor-section-label">PRODUCT LINES</span>{selected.items.map((item, index) => { const preferred = new Set(item.preferred_image_ids || []); const images = item.product?.product_images?.filter(image => preferred.has(image.id)).sort((a, b) => a.sort_order - b.sort_order) || []; const optionEntries = Object.entries(item.option_selections || {}).filter(([, value]) => meaningful(value) && value !== "__other__"); return <article className="review-line" key={item.id}><div className="review-line-header"><span className="line-number">{String(index + 1).padStart(2, "0")}</span><div><h3>{item.product?.name || "Product unavailable"}</h3><span>{item.product?.category || ""} · Quantity {item.quantity} · MOQ {item.product?.moq || "—"}</span></div></div>{images.length > 0 && <div className="review-image-strip">{images.map(image => <img key={image.id} src={image.public_url} alt={`${item.product?.name || "Product"} preferred view`}/>)}</div>}<div className="review-option-list">{optionEntries.map(([key, value]) => <span key={key}><b>{key.replace(/-/g, " ")}:</b> {value}</span>)}{meaningful(item.custom_form_value) && <span><b>Other form:</b> {item.custom_form_value}</span>}{!optionEntries.length && !meaningful(item.custom_form_value) && <span>Options not specified.</span>}</div><p className="review-requirements">{item.requirements || "No product-specific requirements."}</p></article>})}</div><div className="review-detail-actions"><Link href={`/messages?quoteId=${selected.id}`} className="button button-secondary"><MessageSquare size={15}/> Ask a question</Link><Link href={`/admin/quote?quoteId=${selected.id}`} className="button button-primary">Prepare quotation <ChevronRight size={15}/></Link></div></div></section>}</div>}</main></div>;
+  return (
+    <AdminLayout
+      title="Quote requests"
+      subtitle={inbox.isPending ? "Loading…" : `${requests.length} ${requests.length === 1 ? "request" : "requests"}, newest first`}
+      headerClassName={selected ? "hidden lg:flex" : undefined}>
+      {inbox.isError && <Notice tone="red">{errorMessage(inbox.error, "We could not load the quote requests.")}</Notice>}
+
+      {!inbox.isPending && requests.length === 0 && !inbox.isError ? (
+        <Card>
+          <EmptyState icon={Inbox} title="No quote requests yet" description="New requests from customers will appear here once they are submitted." />
+        </Card>
+      ) : (
+        <div className="lg:grid lg:grid-cols-[minmax(300px,360px)_minmax(0,1fr)] lg:items-start lg:gap-8">
+          <div className={cn(selected && "hidden lg:block")}>
+            {inbox.isPending ? (
+              <Card>
+                <p className="p-6 text-center text-subhead text-label-2">Loading requests…</p>
+              </Card>
+            ) : (
+              <ListGroup>
+                {requests.map(request => (
+                  <ListRow
+                    key={request.id}
+                    title={request.ref}
+                    titleTrailing={<StatusBadge status={request.status} />}
+                    subtitle={
+                      <>
+                        <span className="block truncate">{request.company_name || request.contact_email || "Customer"}</span>
+                        <span className="block text-footnote">
+                          {formatDate(request.created_at)} · {request.items.length} {request.items.length === 1 ? "line" : "lines"}
+                        </span>
+                      </>
+                    }
+                    selected={request.id === selectedId}
+                    onClick={() => open(request.id)}
+                    chevron
+                  />
+                ))}
+              </ListGroup>
+            )}
+          </div>
+
+          <div className={cn(!selected && "hidden lg:block")}>
+            {selected ? (
+              <>
+                <BackLink href="/admin/quotes" className="lg:hidden">
+                  Requests
+                </BackLink>
+                <RequestDetail request={selected} />
+              </>
+            ) : (
+              <Card className="hidden lg:block">
+                <EmptyState icon={ClipboardList} title="Select a request" description="Choose a request on the left to read the customer's brief." />
+              </Card>
+            )}
+          </div>
+        </div>
+      )}
+    </AdminLayout>
+  );
 }
