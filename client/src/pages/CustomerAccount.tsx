@@ -1,33 +1,110 @@
-import { useEffect, useState } from "react";
-import { ArrowLeft, ArrowRight, MapPin, UserRound } from "lucide-react";
-import { Link } from "wouter";
+import { useQuery } from "@tanstack/react-query";
+import { HelpCircle, LayoutDashboard, LogOut, MapPin, Package } from "lucide-react";
+import { useLocation } from "wouter";
 import { useAuth } from "@/_core/hooks/useAuth";
-import { startLogin } from "@/const";
-import { supabase } from "@/lib/supabase";
+import { Badge, Card, EmptyState, ListGroup, ListRow, Notice, PageHeader } from "@/components/ios";
+import { Avatar } from "@/components/layout/Avatar";
+import { Container } from "@/components/layout/Container";
+import { PageLoading, SignInRequired } from "@/components/layout/PageState";
+import { SiteLayout } from "@/components/layout/SiteLayout";
+import { usePageTitle } from "@/hooks/usePageTitle";
+import { getSupabaseClient } from "@/lib/supabase";
 
 type Address = { id: string; label: string; recipient_name: string; company_name: string | null; line1: string; line2: string | null; city: string; state: string | null; postal_code: string | null; country: string; is_default: boolean };
 
+async function fetchAddresses(userId: string): Promise<Address[]> {
+  const { data, error } = await getSupabaseClient()
+    .from("customer_addresses")
+    .select("id,label,recipient_name,company_name,line1,line2,city,state,postal_code,country,is_default")
+    .eq("customer_id", userId)
+    .order("is_default", { ascending: false })
+    .order("created_at", { ascending: false });
+  if (error) throw error;
+  return (data || []) as Address[];
+}
+
 export default function CustomerAccount() {
-  const { user, loading } = useAuth();
-  const [addresses, setAddresses] = useState<Address[]>([]);
-  const [addressLoading, setAddressLoading] = useState(false);
-  const [error, setError] = useState("");
+  usePageTitle("Account");
+  const { user, loading, logout } = useAuth();
+  const [, navigate] = useLocation();
+  const addresses = useQuery({ queryKey: ["my-addresses", user?.uid], queryFn: () => fetchAddresses(user!.uid), enabled: Boolean(user), staleTime: 60_000 });
 
-  useEffect(() => {
-    if (!user) return;
-    let active = true;
-    setAddressLoading(true);
-    supabase.from("customer_addresses").select("id,label,recipient_name,company_name,line1,line2,city,state,postal_code,country,is_default").order("is_default", { ascending: false }).order("created_at", { ascending: false }).then(({ data, error: queryError }) => {
-      if (!active) return;
-      if (queryError) setError("We could not load your saved addresses yet.");
-      else setAddresses((data || []) as Address[]);
-      setAddressLoading(false);
-    });
-    return () => { active = false; };
-  }, [user]);
+  if (loading) return <SiteLayout><PageLoading label="Loading your account…" /></SiteLayout>;
+  if (!user) return <SiteLayout><SignInRequired title="Sign in to manage your account" description="Your profile and saved delivery addresses are only available to you." /></SiteLayout>;
 
-  if (loading) return <div className="confirmation-page"><span className="eyebrow">ACCOUNT</span><h1>Loading your account…</h1></div>;
-  if (!user) return <div className="confirmation-page"><span className="eyebrow">ACCOUNT</span><h1>Sign in to manage your account.</h1><p>Your profile and saved business addresses are only available to your signed-in account.</p><button className="button button-primary" onClick={() => startLogin()}>Sign in with Supabase <ArrowRight size={16}/></button></div>;
+  return (
+    <SiteLayout>
+      <Container size="form" className="space-y-7 pt-4 md:pt-8">
+        <PageHeader title="Account" />
 
-  return <div className="app-shell"><header className="site-header reference-header"><Link href="/" className="brand"><span className="brand-mark">C</span><span>CHADREY<small>WHOLESALE</small></span></Link><nav className="main-nav"><Link href="/products">Products</Link><Link href="/quote">Request a Quote</Link><Link href="/dashboard">My Workspace</Link></nav><span className="avatar">{user.name?.slice(0, 2).toUpperCase() || "CW"}</span></header><main className="page-container account-page"><Link href="/dashboard" className="back-link"><ArrowLeft size={15}/> Back to workspace</Link><div className="document-heading"><div><span className="eyebrow">ACCOUNT SETTINGS</span><h1>Your business profile.</h1><p className="page-lede">Review your account details and saved delivery addresses for future quote requests.</p></div><UserRound size={30} color="var(--green)"/></div><div className="account-grid"><section className="document-card"><span className="eyebrow">PROFILE</span><h2>{user.name || "Chadrey customer"}</h2><p>{user.email || "Signed-in Supabase account"}</p><div className="account-detail"><span>Access</span><strong>{user.role === "admin" ? "Administrator" : "Customer"}</strong></div></section><section className="document-card"><div className="panel-heading"><div><span className="eyebrow">DELIVERY ADDRESSES</span><h2>Saved locations</h2></div><MapPin size={22} color="var(--green)"/></div>{error && <p className="inline-error">{error}</p>}{addressLoading ? <p className="notification-menu-empty">Loading saved addresses…</p> : addresses.length ? <div className="address-list">{addresses.map(address => <article className="address-card" key={address.id}><div><strong>{address.label}{address.is_default ? " · Default" : ""}</strong><p>{address.recipient_name}{address.company_name ? ` · ${address.company_name}` : ""}<br/>{address.line1}{address.line2 ? `, ${address.line2}` : ""}<br/>{address.city}{address.state ? `, ${address.state}` : ""}{address.postal_code ? ` ${address.postal_code}` : ""}, {address.country}</p></div></article>)}</div> : <div className="empty-state"><MapPin size={22}/><p>No saved addresses yet. Add one during your next quote request.</p></div>}</section></div></main><footer className="reference-footer"><div className="footer-brand"><span className="brand-mountain">⌃</span><div><strong>Chadrey Wholesale</strong><small>Your trusted partner for wholesale success.</small></div></div><div className="footer-socials"><Link href="/contact" aria-label="Contact Chadrey on LinkedIn">in</Link><Link href="/contact" aria-label="Contact Chadrey on Facebook">f</Link><Link href="/contact" aria-label="Contact Chadrey on Instagram">◎</Link><Link href="/contact" aria-label="Email Chadrey">✉</Link></div><div className="footer-bottom"><span>© 2026 Chadrey Wholesale. All rights reserved.</span></div></footer></div>;
+        <Card className="flex items-center gap-4 p-5">
+          <Avatar name={user.name} email={user.email} className="size-16 text-title3" />
+          <div className="min-w-0">
+            <h2 className="truncate text-title3 font-bold">{user.name || "Chadrey customer"}</h2>
+            <p className="truncate text-subhead text-label-2">{user.email || "Signed-in account"}</p>
+            <Badge tone={user.role === "admin" ? "indigo" : "blue"} className="mt-2">
+              {user.role === "admin" ? "Administrator" : "Customer"}
+            </Badge>
+          </div>
+        </Card>
+
+        <section id="addresses">
+          {addresses.isError && <Notice tone="orange" className="mb-3">We could not load your saved addresses yet.</Notice>}
+          {addresses.data && addresses.data.length === 0 ? (
+            <Card>
+              <EmptyState icon={MapPin} title="No saved addresses" description="Add a delivery address when you send your next quote request." />
+            </Card>
+          ) : (
+            <ListGroup header="Delivery addresses">
+              {addresses.isPending && <ListRow title="Loading…" />}
+              {(addresses.data ?? []).map(address => (
+                <ListRow
+                  key={address.id}
+                  icon={<MapPin />}
+                  tone="green"
+                  title={
+                    <>
+                      {address.label}
+                      {address.is_default && <Badge tone="green" className="ml-2 align-middle">Default</Badge>}
+                    </>
+                  }
+                  subtitle={
+                    <>
+                      {address.recipient_name}
+                      {address.company_name ? ` · ${address.company_name}` : ""}
+                      <br />
+                      {address.line1}
+                      {address.line2 ? `, ${address.line2}` : ""}
+                      <br />
+                      {address.city}
+                      {address.state ? `, ${address.state}` : ""}
+                      {address.postal_code ? ` ${address.postal_code}` : ""}, {address.country}
+                    </>
+                  }
+                />
+              ))}
+            </ListGroup>
+          )}
+        </section>
+
+        <ListGroup header="Shortcuts">
+          <ListRow href="/dashboard" icon={<LayoutDashboard />} tone="blue" title="My quotes" chevron />
+          <ListRow href="/orders" icon={<Package />} tone="teal" title="Track an order" chevron />
+          <ListRow href="/contact" icon={<HelpCircle />} tone="orange" title="Contact us" chevron />
+          {user.role === "admin" && <ListRow href="/admin" icon={<LayoutDashboard />} tone="indigo" title="Open admin" chevron />}
+        </ListGroup>
+
+        <ListGroup>
+          <ListRow
+            icon={<LogOut />}
+            tone="red"
+            title="Sign out"
+            onClick={() => {
+              void logout().then(() => navigate("/"));
+            }}
+          />
+        </ListGroup>
+      </Container>
+    </SiteLayout>
+  );
 }

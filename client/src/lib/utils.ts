@@ -1,5 +1,19 @@
 import { clsx, type ClassValue } from "clsx";
-import { twMerge } from "tailwind-merge";
+import { extendTailwindMerge } from "tailwind-merge";
+
+/**
+ * tailwind-merge needs to know the design system's custom scales. Without this it reads
+ * `text-headline` (a font size) as a text colour and drops the real colour class next to it.
+ */
+const twMerge = extendTailwindMerge({
+  extend: {
+    theme: {
+      text: ["largetitle", "title1", "title2", "title3", "headline", "body", "callout", "subhead", "footnote", "caption", "caption2"],
+      radius: ["control", "group", "card", "sheet"],
+      shadow: ["card", "float", "sheet"],
+    },
+  },
+});
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));

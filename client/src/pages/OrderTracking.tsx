@@ -1,24 +1,89 @@
-import { ArrowLeft, ArrowRight, Check, Truck } from "lucide-react";
-import { Link, useLocation } from "wouter";
-import { trpc } from "@/lib/trpc";
+import { Check, PackageSearch } from "lucide-react";
+import { useSearch } from "wouter";
 import { useAuth } from "@/_core/hooks/useAuth";
-import { startLogin } from "@/const";
+import { BackLink, ButtonLink, Card, ListGroup, ListRow, Notice, PageHeader } from "@/components/ios";
+import { CenteredState, PageLoading, SignInRequired } from "@/components/layout/PageState";
+import { Container } from "@/components/layout/Container";
+import { SiteLayout } from "@/components/layout/SiteLayout";
+import { usePageTitle } from "@/hooks/usePageTitle";
+import { formatDate } from "@/lib/format";
+import { trpc } from "@/lib/trpc";
+import { cn } from "@/lib/utils";
 
 const steps = ["Confirmed", "Processing", "Shipped", "Delivered"];
 
 export default function OrderTracking() {
-  const [location] = useLocation();
-  const orderId = new URLSearchParams(location.split("?")[1] || "").get("orderId");
+  usePageTitle("Track an order");
+  const search = useSearch();
+  const orderId = new URLSearchParams(search).get("orderId");
   const { user, loading } = useAuth();
   const orders = trpc.orders.mine.useQuery(undefined, { enabled: Boolean(user) });
-  const liveOrder = orders.data?.find((row) => String(row.order.id) === orderId) ?? (orderId ? undefined : orders.data?.[0]);
+  const liveOrder = orders.data?.find(row => String(row.order.id) === orderId) ?? (orderId ? undefined : orders.data?.[0]);
   const effectiveStatus = liveOrder?.order.status ?? "processing";
-  const current = Math.max(0, steps.findIndex((step) => step.toLowerCase() === effectiveStatus));
+  const current = Math.max(0, steps.findIndex(step => step.toLowerCase() === effectiveStatus));
 
-  if (loading) return <div className="confirmation-page"><span className="eyebrow">ORDER TRACKING</span><h1>Loading your order…</h1></div>;
-  if (!user) return <div className="confirmation-page"><span className="eyebrow">ORDER TRACKING</span><h1>Sign in to track an order.</h1><p>Your order milestones and shipping details are available inside your customer workspace.</p><button className="button button-primary" onClick={() => startLogin()}>Sign in with Supabase <ArrowRight size={16}/></button></div>;
-  if (orders.isLoading) return <div className="confirmation-page"><span className="eyebrow">ORDER TRACKING</span><h1>Loading your order…</h1></div>;
-  if (!liveOrder) return <div className="confirmation-page"><span className="eyebrow">ORDER TRACKING</span><h1>No live order to track.</h1><p>Order tracking will appear here after a confirmed payment creates an order.</p><Link href="/dashboard" className="button button-primary">Back to workspace <ArrowRight size={16}/></Link></div>;
+  if (loading || (user && orders.isLoading)) return <SiteLayout><PageLoading label="Loading your order…" /></SiteLayout>;
+  if (!user) return <SiteLayout><SignInRequired title="Sign in to track an order" description="Your order milestones and shipping details are available in your account." /></SiteLayout>;
+  if (!liveOrder) {
+    return (
+      <SiteLayout>
+        <CenteredState icon={PackageSearch} tone="gray" title="No order to track yet" description="Tracking appears here after your payment is confirmed and your order is created.">
+          <ButtonLink href="/dashboard" size="lg">
+            Back to my quotes
+          </ButtonLink>
+        </CenteredState>
+      </SiteLayout>
+    );
+  }
 
-  return <div className="app-shell"><header className="site-header reference-header"><Link href="/" className="brand"><span className="brand-mark">C</span><span>CHADREY<small>WHOLESALE</small></span></Link><nav className="main-nav"><Link href="/dashboard">My Workspace</Link><Link href="/products">Products</Link></nav><span className="avatar">{user.name?.slice(0, 2).toUpperCase() || "CW"}</span></header><main className="page-container narrow"><Link href="/dashboard" className="back-link"><ArrowLeft size={15}/> Back to workspace</Link><span className="eyebrow">ORDER TRACKING / {liveOrder.order.id}</span><div className="document-heading"><div><h1>Your order is moving.</h1><p className="page-lede">A single view of confirmation, production, shipping, and delivery.</p></div><Truck size={30} color="var(--green)"/></div><section className="timeline-card large-timeline"><div className="timeline-track">{steps.map((step, index) => <div className={`timeline-step ${index <= current ? "active" : ""}`} key={step}><span>{index < current ? <Check size={14}/> : index + 1}</span><strong>{step}</strong><small>{index <= current ? index === current ? "Current status" : "Completed" : "Upcoming"}</small></div>)}</div><div className="shipping-note"><span className="eyebrow">SHIPPING DETAILS</span><p>{liveOrder.order.trackingNumber ? `${liveOrder.order.carrier || "Carrier"} · ${liveOrder.order.trackingNumber} · Tracking is available with the carrier.` : effectiveStatus === "shipped" ? "Carrier details are being prepared." : "Tracking will appear here once your order ships."}</p></div></section><section className="workspace-panel milestone-details"><span className="eyebrow">MILESTONE DETAILS</span><div className="milestone-detail-row"><span>Confirmed</span><strong>{liveOrder.order.createdAt ? new Date(liveOrder.order.createdAt).toLocaleDateString() : "Pending"}</strong></div><div className="milestone-detail-row"><span>Shipped</span><strong>{liveOrder.order.shippedAt ? new Date(liveOrder.order.shippedAt).toLocaleDateString() : "Not shipped"}</strong></div><div className="milestone-detail-row"><span>Delivered</span><strong>{liveOrder.order.deliveredAt ? new Date(liveOrder.order.deliveredAt).toLocaleDateString() : "Not delivered"}</strong></div></section></main><footer className="reference-footer"><div className="footer-brand"><span className="brand-mountain">⌃</span><div><strong>Chadrey Wholesale</strong><small>Your trusted partner for wholesale success.</small></div></div><div className="footer-socials"><Link href="/contact" aria-label="Contact Chadrey on LinkedIn">in</Link><Link href="/contact" aria-label="Contact Chadrey on Facebook">f</Link><Link href="/contact" aria-label="Contact Chadrey on Instagram">◎</Link><Link href="/contact" aria-label="Email Chadrey">✉</Link></div><div className="footer-bottom"><span>© 2026 Chadrey Wholesale. All rights reserved.</span></div></footer></div>;
+  const { order } = liveOrder;
+  const shippingNote = order.trackingNumber
+    ? `${order.carrier || "Carrier"} · ${order.trackingNumber}`
+    : effectiveStatus === "shipped"
+      ? "Carrier details are being prepared."
+      : "Tracking appears here once your order ships.";
+
+  return (
+    <SiteLayout>
+      <Container size="form" className="space-y-7 pt-2 md:pt-6">
+        <div>
+          <BackLink href="/dashboard">My quotes</BackLink>
+          <PageHeader title="Your order" subtitle={`Order #${order.id}`} className="mt-1" />
+        </div>
+
+        {orders.isError && <Notice tone="orange">We could not refresh this order. Showing the last details we have.</Notice>}
+
+        <Card className="p-5">
+          <ol>
+            {steps.map((step, index) => {
+              const done = index < current;
+              const active = index === current;
+              return (
+                <li key={step} className="relative flex gap-4 pb-7 last:pb-0">
+                  {index < steps.length - 1 && <span aria-hidden className={cn("absolute left-[17px] top-9 bottom-0 w-0.5", done ? "bg-tint" : "bg-separator")} />}
+                  <span className={cn("z-10 grid size-9 shrink-0 place-items-center rounded-full text-subhead font-semibold", done || active ? "bg-tint text-white" : "bg-fill-3 text-label-2")}>
+                    {done ? <Check className="size-[18px]" strokeWidth={3} aria-hidden /> : index + 1}
+                  </span>
+                  <div className="pt-1">
+                    <p className={cn("text-headline", !done && !active && "text-label-2")}>{step}</p>
+                    <p className="text-subhead text-label-2">{done ? "Completed" : active ? "Current status" : "Upcoming"}</p>
+                  </div>
+                </li>
+              );
+            })}
+          </ol>
+        </Card>
+
+        <ListGroup header="Shipping">
+          <ListRow title="Tracking" subtitle={shippingNote} />
+        </ListGroup>
+
+        <ListGroup header="Milestones">
+          <ListRow title="Confirmed" value={order.createdAt ? formatDate(order.createdAt) : "Pending"} />
+          <ListRow title="Shipped" value={order.shippedAt ? formatDate(order.shippedAt) : "Not shipped"} />
+          <ListRow title="Delivered" value={order.deliveredAt ? formatDate(order.deliveredAt) : "Not delivered"} />
+        </ListGroup>
+      </Container>
+    </SiteLayout>
+  );
 }

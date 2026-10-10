@@ -1,44 +1,141 @@
-import { ArrowRight, Bell, ChevronRight, CircleCheck, Clock3, FileText, Package, Plus, WalletCards } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { Bell, ClipboardList, FileText, MapPin, Package, Plus, Settings } from "lucide-react";
 import { useAuth } from "@/_core/hooks/useAuth";
-import { startLogin } from "@/const";
-import { trpc } from "@/lib/trpc";
+import { ButtonLink, Card, EmptyState, ListGroup, ListRow, PageHeader, StatusBadge } from "@/components/ios";
+import { Container } from "@/components/layout/Container";
+import { PageLoading, SignInRequired } from "@/components/layout/PageState";
+import { SiteLayout } from "@/components/layout/SiteLayout";
+import { usePageTitle } from "@/hooks/usePageTitle";
+import { fetchNotifications } from "@/lib/accountApi";
+import { formatDate, formatRelative } from "@/lib/format";
 import { getSupabaseClient } from "@/lib/supabase";
-import { initialsFrom } from "@/lib/utils";
-import { Link } from "wouter";
-import { useEffect, useState } from "react";
+import { statusTone } from "@/lib/status";
 
-type LiveQuote = { id: string; ref: string; status: string; createdAt: string; product: string; fileCount: number; requirements: string | null };
+type LiveQuote = { id: string; ref: string; status: string; createdAt: string; product: string; fileCount: number };
 
-function SideNav() { return <aside className="workspace-sidebar"><Link href="/" className="workspace-logo"><span className="brand-mark">C</span><span>CHADREY<small>WHOLESALE</small></span></Link><span className="sidebar-label">WORKSPACE</span><Link className="sidebar-link active" href="/dashboard"><CircleCheck size={16}/> Overview</Link><Link className="sidebar-link" href="/dashboard#recent-requests"><FileText size={16}/> My quotes</Link><Link className="sidebar-link" href="/dashboard#recent-requests"><WalletCards size={16}/> Invoices</Link><Link className="sidebar-link" href="/orders"><Package size={16}/> Orders</Link><span className="sidebar-label">ACCOUNT</span><Link className="sidebar-link" href="/addresses">Addresses</Link><Link className="sidebar-link" href="/account">Account settings</Link><div className="sidebar-bottom"><Link className="sidebar-link" href="/">← Back to store</Link></div></aside>; }
+async function fetchMyQuotes(userId: string): Promise<LiveQuote[]> {
+  const client = getSupabaseClient();
+  const [requestResult, itemResult, fileResult] = await Promise.all([
+    client.from("quote_requests").select("id,ref,status,created_at,requirements").eq("customer_id", userId).order("created_at", { ascending: false }),
+    client.from("quote_request_items").select("quote_request_id,products(name)"),
+    client.from("quote_request_files").select("quote_request_id"),
+  ]);
+  if (requestResult.error) throw requestResult.error;
+  const names = new Map<string, string>();
+  for (const item of (itemResult.data || []) as any[]) {
+    const product = Array.isArray(item.products) ? item.products[0] : item.products;
+    if (product?.name && !names.has(item.quote_request_id)) names.set(item.quote_request_id, product.name);
+  }
+  const files = new Map<string, number>();
+  for (const file of (fileResult.data || []) as Array<{ quote_request_id: string }>) files.set(file.quote_request_id, (files.get(file.quote_request_id) || 0) + 1);
+  return ((requestResult.data || []) as any[]).map(request => ({
+    id: request.id,
+    ref: request.ref,
+    status: request.status,
+    createdAt: request.created_at,
+    product: names.get(request.id) || "Quote request",
+    fileCount: files.get(request.id) || 0,
+  }));
+}
+
+function Stat({ label, value }: { label: string; value: number }) {
+  return (
+    <Card className="p-4">
+      <p className="text-title1 font-bold tabular-nums">{value}</p>
+      <p className="mt-0.5 text-footnote font-medium text-label-2">{label}</p>
+    </Card>
+  );
+}
 
 export default function CustomerDashboard() {
-  const [notificationOpen, setNotificationOpen] = useState(false);
-  const [quotes, setQuotes] = useState<LiveQuote[]>([]);
+  usePageTitle("My quotes");
   const { user, loading } = useAuth();
-  const notificationQuery = trpc.notifications.mine.useQuery(undefined, { enabled: Boolean(user) });
+  const quotes = useQuery({ queryKey: ["my-quotes", user?.uid], queryFn: () => fetchMyQuotes(user!.uid), enabled: Boolean(user), staleTime: 30_000 });
+  const notifications = useQuery({ queryKey: ["my-notifications", user?.uid], queryFn: () => fetchNotifications(user!.uid), enabled: Boolean(user), staleTime: 30_000 });
 
-  useEffect(() => {
-    if (!user) { setQuotes([]); return; }
-    let active = true;
-    void (async () => {
-      const client = getSupabaseClient();
-      const [requestResult, itemResult, fileResult] = await Promise.all([
-        client.from("quote_requests").select("id,ref,status,created_at,requirements").eq("customer_id", user.uid).order("created_at", { ascending: false }),
-        client.from("quote_request_items").select("quote_request_id,products(name)"),
-        client.from("quote_request_files").select("quote_request_id")
-      ]);
-      if (!active || requestResult.error) return;
-      const names = new Map<string, string>();
-      for (const item of (itemResult.data || []) as any[]) { const product = Array.isArray(item.products) ? item.products[0] : item.products; if (product?.name && !names.has(item.quote_request_id)) names.set(item.quote_request_id, product.name); }
-      const files = new Map<string, number>();
-      for (const file of (fileResult.data || []) as Array<{ quote_request_id: string }>) files.set(file.quote_request_id, (files.get(file.quote_request_id) || 0) + 1);
-      setQuotes(((requestResult.data || []) as any[]).map(request => ({ id: request.id, ref: request.ref, status: request.status, createdAt: request.created_at, product: names.get(request.id) || "Quote request", fileCount: files.get(request.id) || 0, requirements: request.requirements })));
-    })();
-    return () => { active = false; };
-  }, [user]);
+  if (loading) return <SiteLayout><PageLoading label="Loading your quotes…" /></SiteLayout>;
+  if (!user) return <SiteLayout><SignInRequired title="Sign in to see your quotes" description="Your quote requests, quotations and orders are attached to your account." /></SiteLayout>;
 
-  if (loading) return <div className="confirmation-page"><span className="eyebrow">CUSTOMER WORKSPACE</span><h1>Loading your workspace…</h1></div>;
-  if (!user) return <div className="confirmation-page"><span className="eyebrow">CUSTOMER WORKSPACE</span><h1>Sign in to continue.</h1><p>Your quotes, invoices, orders, and saved details are attached to your secure workspace.</p><button className="button button-primary" onClick={() => startLogin()}>Sign in with Supabase <ArrowRight size={16}/></button></div>;
+  const list = quotes.data ?? [];
+  const firstName = user.name?.split(" ")[0] || "there";
 
-  return <div className="workspace"><SideNav/><main className="workspace-main"><header className="workspace-header"><div><span className="eyebrow">CUSTOMER WORKSPACE</span><h1>Good morning, {user.name?.split(" ")[0] || "there"}.</h1><p>Here is the latest on your sourcing activity.</p></div><div className="workspace-header-actions"><div className="notification-menu-wrap"><button className="icon-button" onClick={() => setNotificationOpen(value => !value)} aria-label="Open notifications"><Bell size={17}/><i/></button>{notificationOpen && <div className="notification-menu"><strong>Notifications</strong>{notificationQuery.data?.length ? notificationQuery.data.slice(0, 4).map(notification => <Link href="/dashboard#recent-requests" className="notification-menu-item" key={notification.id}><span className="notification-dot green"/><span>{notification.title}</span></Link>) : <span className="notification-menu-empty">No new updates.</span>}</div>}</div><Link href="/account" className="avatar" title={user.name}>{initialsFrom(user.name, user.email)}</Link></div></header><section className="dashboard-grid"><Link href="/dashboard#recent-requests" className="summary-card summary-highlight summary-card-link"><span className="summary-icon"><FileText size={17}/></span><span>Open quote requests</span><strong>{quotes.length}</strong><small>{quotes.length ? "Live from your account" : "No requests yet"}</small></Link><Link href="/dashboard#recent-requests" className="summary-card summary-card-link"><span className="summary-icon"><Clock3 size={17}/></span><span>Awaiting quotation</span><strong>{quotes.filter(quote => quote.status === "pending").length}</strong><small>{quotes.length ? "Live from your account" : "No live quotations"}</small></Link><Link href="/orders" className="summary-card summary-card-link"><span className="summary-icon"><Package size={17}/></span><span>Orders in progress</span><strong>0</strong><small>No live orders yet</small></Link></section><div className="workspace-columns"><section id="recent-requests" className="workspace-panel"><div className="panel-heading"><div><span className="eyebrow">YOUR ACTIVITY</span><h2>Recent requests</h2></div><Link href="/quote" className="button button-primary small"><Plus size={15}/> New request</Link></div><div className="quote-table">{quotes.length ? quotes.map(quote => { const tone = quote.status === "pending" ? "amber" : quote.status === "paid" ? "violet" : "green"; const action = quote.status === "quoted" ? "Review quotation" : "View request"; return <div className="quote-row" key={quote.ref}><div className={`status-symbol ${tone}`}><FileText size={17}/></div><div className="quote-row-main"><strong>{quote.ref}</strong><span>{quote.product}{quote.fileCount ? ` · ${quote.fileCount} reference file${quote.fileCount === 1 ? "" : "s"}` : ""}</span><small>{new Date(quote.createdAt).toLocaleDateString()}</small></div><div className={`status-pill ${tone}`}>{quote.status}</div><Link href={quote.status === "quoted" ? `/quotation?quoteId=${quote.id}` : "/dashboard#recent-requests"} className="row-action">{action}<ChevronRight size={15}/></Link></div>; }) : <div className="empty-state"><FileText size={22}/><p>No live quote requests yet.</p><Link href="/products" className="text-link">Browse products <ArrowRight size={15}/></Link></div>}</div><Link href="/dashboard#recent-requests" className="panel-footer">View all requests <ArrowRight size={15}/></Link></section><section className="workspace-panel notification-panel"><div className="panel-heading"><div><span className="eyebrow">NOTIFICATIONS</span><h2>Keep moving</h2></div><span className="unread-count">{notificationQuery.data?.length ?? 0} new</span></div>{notificationQuery.data?.length ? notificationQuery.data.slice(0, 3).map((notification, index) => <Link href="/dashboard#recent-requests" className="notification-item" key={notification.id}><span className={`notification-dot ${index === 0 ? "green" : "amber"}`}/><div><strong>{notification.title}</strong><p>{notification.body || "Chadrey Wholesale update"} · {new Date(notification.createdAt).toLocaleString()}</p></div></Link>) : <span className="notification-menu-empty">No new updates.</span>}<div className="timeline-card"><span className="eyebrow">ORDER TRACKING</span><h3>No live orders yet</h3><p>Your order milestones will appear here after an invoice is paid and an order is created.</p><Link href="/products" className="text-link">Browse products <ArrowRight size={15}/></Link></div></section></div></main></div>;
+  return (
+    <SiteLayout>
+      <Container size="form" className="space-y-7 pt-4 md:pt-8">
+        <PageHeader
+          title="My quotes"
+          subtitle={`Hello, ${firstName}. Here is the latest on your requests.`}
+          actions={
+            <ButtonLink href="/quote" size="sm">
+              <Plus className="size-4" aria-hidden /> New request
+            </ButtonLink>
+          }
+        />
+
+        <div className="grid grid-cols-3 gap-3">
+          <Stat label="Requests" value={list.length} />
+          <Stat label="Awaiting quote" value={list.filter(quote => quote.status === "pending").length} />
+          <Stat label="Ready to review" value={list.filter(quote => quote.status === "quoted").length} />
+        </div>
+
+        <section aria-labelledby="recent-heading">
+          {list.length === 0 && !quotes.isPending ? (
+            <Card>
+              <EmptyState
+                icon={ClipboardList}
+                title="No quote requests yet"
+                description="Pick the products you need and we will send you a quotation."
+                action={
+                  <ButtonLink href="/products" size="lg">
+                    Browse products
+                  </ButtonLink>
+                }
+              />
+            </Card>
+          ) : (
+            <ListGroup header={<span id="recent-heading">Recent requests</span>}>
+              {quotes.isPending && <ListRow title="Loading…" />}
+              {list.map(quote => (
+                <ListRow
+                  key={quote.id}
+                  icon={<FileText />}
+                  tone={statusTone(quote.status)}
+                  title={quote.ref}
+                  subtitle={
+                    <>
+                      {quote.product}
+                      {quote.fileCount ? ` · ${quote.fileCount} file${quote.fileCount === 1 ? "" : "s"}` : ""} · <span className="whitespace-nowrap">{formatDate(quote.createdAt)}</span>
+                    </>
+                  }
+                  titleTrailing={<StatusBadge status={quote.status} />}
+                  chevron={quote.status === "quoted"}
+                  href={quote.status === "quoted" ? `/quotation?quoteId=${quote.id}` : undefined}
+                />
+              ))}
+            </ListGroup>
+          )}
+        </section>
+
+        {(notifications.data?.length ?? 0) > 0 && (
+          <ListGroup header="Notifications">
+            {notifications.data!.map(item => (
+              <ListRow
+                key={item.id}
+                icon={<Bell />}
+                tone="orange"
+                title={item.title}
+                subtitle={item.body ? `${item.body} · ${formatRelative(item.created_at)}` : formatRelative(item.created_at)}
+              />
+            ))}
+          </ListGroup>
+        )}
+
+        <ListGroup header="Shortcuts">
+          <ListRow href="/orders" icon={<Package />} tone="teal" title="Track an order" chevron />
+          <ListRow href="/addresses" icon={<MapPin />} tone="green" title="Delivery addresses" chevron />
+          <ListRow href="/account" icon={<Settings />} tone="gray" title="Account settings" chevron />
+        </ListGroup>
+      </Container>
+    </SiteLayout>
+  );
 }

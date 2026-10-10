@@ -1,8 +1,102 @@
 import { useState } from "react";
-import { ArrowLeft, ArrowRight, Check, FileCheck2, X } from "lucide-react";
-import { Link, useLocation } from "wouter";
-import { trpc } from "@/lib/trpc";
+import { Check, FileSearch } from "lucide-react";
+import { useSearch } from "wouter";
 import { useAuth } from "@/_core/hooks/useAuth";
-import { initialsFrom } from "@/lib/utils";
+import { BackLink, Button, ButtonLink, Card, ListGroup, ListRow, Notice, PageHeader } from "@/components/ios";
+import { CenteredState, PageLoading, SignInRequired } from "@/components/layout/PageState";
+import { Container } from "@/components/layout/Container";
+import { SiteLayout } from "@/components/layout/SiteLayout";
+import { usePageTitle } from "@/hooks/usePageTitle";
+import { useScrollTopWhen } from "@/hooks/useScrollTopWhen";
+import { formatDate, formatMoney } from "@/lib/format";
+import { trpc } from "@/lib/trpc";
 
-export default function QuotationReview(){ const [location] = useLocation(); const { user } = useAuth(); const quoteRequestId=Number(new URLSearchParams(location.split("?")[1]||"").get("quoteId")||1); const quote=trpc.quotes.quotation.useQuery({quoteRequestId}); const review=trpc.quotes.reviewQuotation.useMutation(); const [decision,setDecision]=useState<"accepted"|"declined"|null>(null); if(quote.isLoading)return <div className="confirmation-page"><h1>Loading quotation…</h1></div>; if(!quote.data)return <div className="confirmation-page"><span className="eyebrow">QUOTATION</span><h1>Quotation not found.</h1><Link href="/dashboard" className="button button-secondary">Back to workspace</Link></div>; if(decision)return <div className="confirmation-page"><div className="success-mark"><Check size={27}/></div><span className="eyebrow">{decision === "accepted" ? "QUOTATION ACCEPTED" : "QUOTATION DECLINED"}</span><h1>{decision === "accepted" ? "We will prepare your invoice." : "Your response was recorded."}</h1><p>{decision === "accepted" ? "The Chadrey team can now issue the invoice and payment instructions." : "Our team will follow up if any clarification is needed."}</p><Link href="/dashboard" className="button button-primary">Back to workspace <ArrowRight size={16}/></Link></div>; return <div className="app-shell"><header className="site-header reference-header"><Link href="/" className="brand"><span className="brand-mark">C</span><span>CHADREY<small>WHOLESALE</small></span></Link><nav className="main-nav"><Link href="/products">Products</Link><Link href="/quote">Request a Quote</Link><Link className="active" href="/dashboard">My Workspace</Link></nav><Link href="/dashboard" className="avatar" title={user?.name}>{initialsFrom(user?.name, user?.email)}</Link></header><main className="page-container narrow"><Link href="/dashboard" className="back-link"><ArrowLeft size={15}/> Back to workspace</Link><div className="page-kicker"><span className="eyebrow">QUOTATION / WR-{quoteRequestId}</span><span className="status-pill green">Ready to review</span></div><div className="document-heading"><div><h1>Your quotation.</h1><p className="page-lede">Review the commercial terms before we issue payment instructions.</p></div><FileCheck2 size={31} color="var(--green)"/></div><section className="document-card"><div className="document-row"><span>Quotation subtotal</span><strong>{quote.data.currency} {quote.data.subtotal}</strong></div><div className="document-row"><span>Issued</span><span>{new Date(quote.data.issuedAt).toLocaleDateString()}</span></div><div className="document-row"><span>Valid until</span><span>{quote.data.expiresAt ? new Date(quote.data.expiresAt).toLocaleDateString() : "Until further notice"}</span></div>{quote.data.notes&&<div className="document-note"><span className="eyebrow">TEAM NOTE</span><p>{quote.data.notes}</p></div>}</section><div className="form-submit-row"><button className="button button-secondary" onClick={()=>{setDecision("declined");review.mutate({quotationId:quote.data!.id,decision:"declined"})}}><X size={16}/> Decline quotation</button><button className="button button-primary" onClick={()=>{setDecision("accepted");review.mutate({quotationId:quote.data!.id,decision:"accepted"})}}>Accept and continue <ArrowRight size={16}/></button></div></main><footer className="reference-footer"><div className="footer-brand"><span className="brand-mountain">⌃</span><div><strong>Chadrey Wholesale</strong><small>Your trusted partner for wholesale success.</small></div></div><div className="footer-socials"><Link href="/contact" aria-label="Contact Chadrey on LinkedIn">in</Link><Link href="/contact" aria-label="Contact Chadrey on Facebook">f</Link><Link href="/contact" aria-label="Contact Chadrey on Instagram">◎</Link><Link href="/contact" aria-label="Email Chadrey">✉</Link></div><div className="footer-bottom"><span>© 2026 Chadrey Wholesale. All rights reserved.</span></div></footer></div> }
+export default function QuotationReview() {
+  usePageTitle("Your quotation");
+  const search = useSearch();
+  const { user, loading } = useAuth();
+  const quoteRequestId = Number(new URLSearchParams(search).get("quoteId"));
+  const validId = Number.isInteger(quoteRequestId) && quoteRequestId > 0;
+  const quote = trpc.quotes.quotation.useQuery({ quoteRequestId }, { enabled: Boolean(user) && validId });
+  const review = trpc.quotes.reviewQuotation.useMutation();
+  const [decision, setDecision] = useState<"accepted" | "declined" | null>(null);
+  useScrollTopWhen(decision);
+
+  if (loading || (user && validId && quote.isLoading)) return <SiteLayout><PageLoading label="Loading your quotation…" /></SiteLayout>;
+  if (!user) return <SiteLayout><SignInRequired title="Sign in to review your quotation" /></SiteLayout>;
+
+  if (!quote.data) {
+    return (
+      <SiteLayout>
+        <CenteredState icon={FileSearch} tone="gray" title="Quotation not available" description="We could not load this quotation. If you were told it is ready, please contact us and we will help straight away.">
+          <ButtonLink href="/contact" size="lg">
+            Contact us
+          </ButtonLink>
+          <ButtonLink href="/dashboard" variant="gray" size="lg">
+            Back to my quotes
+          </ButtonLink>
+        </CenteredState>
+      </SiteLayout>
+    );
+  }
+
+  if (decision) {
+    const accepted = decision === "accepted";
+    return (
+      <SiteLayout>
+        <CenteredState
+          icon={Check}
+          tone={accepted ? "green" : "gray"}
+          title={accepted ? "Quotation accepted" : "Response recorded"}
+          description={accepted ? "We will prepare your invoice and payment instructions next." : "Our team will follow up if anything needs clarifying."}>
+          <ButtonLink href="/dashboard" size="lg">
+            Back to my quotes
+          </ButtonLink>
+        </CenteredState>
+      </SiteLayout>
+    );
+  }
+
+  const data = quote.data;
+  const respond = (value: "accepted" | "declined") => review.mutate({ quotationId: data.id, decision: value }, { onSuccess: () => setDecision(value) });
+
+  return (
+    <SiteLayout tabBar={false} className="pb-32">
+      <Container size="form" className="space-y-7 pt-2 md:pt-6">
+        <div>
+          <BackLink href="/dashboard">My quotes</BackLink>
+          <PageHeader title="Your quotation" subtitle={`Request WR-${quoteRequestId}`} className="mt-1" />
+        </div>
+
+        <Card className="p-6 text-center">
+          <p className="text-footnote font-medium uppercase tracking-wide text-label-2">Quotation total</p>
+          <p className="mt-1 text-[2.5rem] font-bold leading-tight tabular-nums">{formatMoney(Number(data.subtotal), data.currency)}</p>
+        </Card>
+
+        <ListGroup>
+          <ListRow title="Issued" value={formatDate(data.issuedAt)} />
+          <ListRow title="Valid until" value={data.expiresAt ? formatDate(data.expiresAt) : "Until further notice"} />
+        </ListGroup>
+
+        {data.notes && (
+          <ListGroup header="Note from our team">
+            <ListRow title={<span className="whitespace-pre-wrap">{data.notes}</span>} />
+          </ListGroup>
+        )}
+
+        {review.isError && <Notice tone="red">We could not record your response. Please try again.</Notice>}
+      </Container>
+
+      <div className="material hairline-t pb-safe fixed inset-x-0 bottom-0 z-40">
+        <div className="gutter mx-auto flex max-w-[760px] gap-3 pb-3 pt-3">
+          <Button variant="gray" size="lg" full disabled={review.isPending} onClick={() => respond("declined")}>
+            Decline
+          </Button>
+          <Button size="lg" full loading={review.isPending} onClick={() => respond("accepted")}>
+            Accept quotation
+          </Button>
+        </div>
+      </div>
+    </SiteLayout>
+  );
+}

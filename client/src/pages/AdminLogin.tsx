@@ -1,10 +1,14 @@
 import { FormEvent, useEffect, useState } from "react";
 import { Link, useLocation } from "wouter";
-import { getSupabaseClient, isGoogleSignInAvailable, isSupabaseConfigured } from "@/lib/supabase";
+import { AuthShell, GoogleMark } from "@/components/auth/AuthShell";
+import { Badge, Button, Field, Notice, TextInput } from "@/components/ios";
+import { usePageTitle } from "@/hooks/usePageTitle";
 import { formatAuthError } from "@/lib/authErrors";
+import { getSupabaseClient, isGoogleSignInAvailable, isSupabaseConfigured } from "@/lib/supabase";
 import { getOrCreateSupabaseProfile, type SupabaseProfile } from "@/lib/userProfile";
 
 export default function AdminLogin() {
+  usePageTitle("Admin sign in");
   const [, navigate] = useLocation();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -53,10 +57,7 @@ export default function AdminLogin() {
     setError("");
     try {
       if (!isGoogleSignInAvailable()) throw new Error("Supabase is not configured for this environment.");
-      const { error: signInError } = await getSupabaseClient().auth.signInWithOAuth({
-        provider: "google",
-        options: { redirectTo: `${window.location.origin}/admin/login` },
-      });
+      const { error: signInError } = await getSupabaseClient().auth.signInWithOAuth({ provider: "google", options: { redirectTo: `${window.location.origin}/admin/login` } });
       if (signInError) throw signInError;
     } catch (caught) {
       setError(formatAuthError(caught));
@@ -65,36 +66,47 @@ export default function AdminLogin() {
   }
 
   if (!isSupabaseConfigured()) {
-    return <main className="confirmation-page">
-      <Link href="/" className="back-link">← Back to Chadrey Wholesale</Link>
-      <div className="document-card" style={{ maxWidth: 480, width: "100%" }}>
-        <span className="eyebrow">ADMIN OPERATIONS</span>
-        <h1>Admin sign-in is not configured.</h1>
-        <p>Add the Supabase browser variables to this deployment, then reload the page.</p>
-      </div>
-    </main>;
+    return (
+      <main className="min-h-dvh">
+        <AuthShell title="Admin sign-in is not configured" badge={<Badge tone="blue">Admin</Badge>} description="Add the Supabase browser variables to this deployment, then reload the page.">
+          <Link href="/" className="block text-center text-subhead text-tint-text">
+            Back to store
+          </Link>
+        </AuthShell>
+      </main>
+    );
   }
 
   return (
-    <main className="confirmation-page">
-      <Link href="/" className="back-link">← Back to Chadrey Wholesale</Link>
-      <div className="document-card" style={{ maxWidth: 480, width: "100%" }}>
-        <span className="eyebrow">ADMIN OPERATIONS</span>
-        <h1>Operations sign in.</h1>
-        <p>Use the Supabase account that has been granted Chadrey Wholesale administrator access.</p>
-        <form onSubmit={submit} style={{ display: "grid", gap: 14, marginTop: 24 }}>
-          <input className="form-input" type="email" placeholder="Administrator email" value={email} onChange={event => setEmail(event.target.value)} required />
-          <input className="form-input" type="password" placeholder="Password" value={password} onChange={event => setPassword(event.target.value)} required />
-          {error && <p role="alert" style={{ color: "#a53b2a", margin: 0 }}>{error}</p>}
-          <button className="button button-primary" type="submit" disabled={busy || googleBusy}>{busy ? "Checking access…" : "Sign in to operations"}</button>
+    <main className="min-h-dvh">
+      <AuthShell title="Operations sign in" badge={<Badge tone="blue">Admin</Badge>} description="Use the account that has been granted administrator access.">
+        <form onSubmit={submit} className="space-y-4 rounded-group bg-surface p-4">
+          <Field label="Administrator email">
+            <TextInput type="email" autoComplete="email" inputMode="email" value={email} onChange={event => setEmail(event.target.value)} required />
+          </Field>
+          <Field label="Password">
+            <TextInput type="password" autoComplete="current-password" value={password} onChange={event => setPassword(event.target.value)} required />
+          </Field>
+          {error && <Notice tone="red">{error}</Notice>}
+          <Button type="submit" size="lg" full loading={busy} disabled={googleBusy}>
+            Sign in
+          </Button>
         </form>
-        <div className="login-divider"><span>or</span></div>
-        <button className="google-login-button" type="button" onClick={continueWithGoogle} disabled={busy || googleBusy}>
-          <span className="google-mark">G</span>
-          {googleBusy ? "Checking access…" : "Continue with Google"}
-        </button>
-        <p style={{ color: "#7b8982", fontSize: 12, margin: "18px 0 0" }}>Admin access is restricted. Customer accounts remain in the customer workspace.</p>
-      </div>
+
+        <div className="my-5 flex items-center gap-3 text-footnote text-label-2" aria-hidden>
+          <span className="h-px flex-1 bg-separator" />
+          or
+          <span className="h-px flex-1 bg-separator" />
+        </div>
+        <Button variant="outline" size="lg" full onClick={continueWithGoogle} loading={googleBusy} disabled={busy}>
+          {!googleBusy && <GoogleMark />}
+          Continue with Google
+        </Button>
+        <p className="mt-6 text-center text-footnote text-label-2">Admin access is restricted. Customer accounts stay in the customer area.</p>
+        <Link href="/" className="mt-3 block text-center text-subhead text-tint-text">
+          Back to store
+        </Link>
+      </AuthShell>
     </main>
   );
 }

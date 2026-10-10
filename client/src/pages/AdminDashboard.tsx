@@ -1,8 +1,107 @@
-import {ArrowRight, Bell, ChevronRight, ClipboardList, FileCheck2, FileText, MoreHorizontal, PackageCheck, Search, Truck, Users, ArrowLeftToLine, ShieldCheck} from "lucide-react";
-import { useAuth } from "@/_core/hooks/useAuth";
-import { trpc } from "@/lib/trpc";
+import { useQuery } from "@tanstack/react-query";
+import { ClipboardList, FileText, PackagePlus, Truck, Users } from "lucide-react";
 import { Link } from "wouter";
+import { useAuth } from "@/_core/hooks/useAuth";
+import { Card, EmptyState, ListGroup, ListRow, Notice, StatusBadge } from "@/components/ios";
+import { AdminLayout } from "@/components/layout/AdminLayout";
+import { usePageTitle } from "@/hooks/usePageTitle";
+import { fetchAdminCounts, fetchOrdersToWatch, fetchRecentRequests } from "@/lib/accountApi";
+import { formatDate } from "@/lib/format";
+import { statusTone } from "@/lib/status";
+import { cn } from "@/lib/utils";
 
-function AdminNav(){return <aside className="workspace-sidebar admin-sidebar"><Link href="/" className="workspace-logo"><span className="brand-mark">C</span><span>CHADREY<small>OPERATIONS</small></span></Link><span className="sidebar-label">OPERATIONS</span><Link className="sidebar-link active" href="/admin"><ClipboardList size={16}/> Overview</Link><Link className="sidebar-link" href="/admin/analytics">Analytics</Link><Link className="sidebar-link" href="/admin/quotes"><FileText size={16}/> Quote requests</Link><Link className="sidebar-link" href="/admin/quote"><FileCheck2 size={16}/> Quotations</Link><Link className="sidebar-link" href="/admin"><FileText size={16}/> Invoices</Link><Link className="sidebar-link" href="/admin/fulfilment"><PackageCheck size={16}/> Orders</Link><Link className="sidebar-link" href="/admin/fulfilment"><Truck size={16}/> Payments</Link><span className="sidebar-label">DIRECTORY</span><Link className="sidebar-link" href="/admin/users"><Users size={16}/> Users</Link><Link className="sidebar-link" href="/admin/products">Products</Link><Link className="sidebar-link" href="/messages">Messages</Link><div className="sidebar-bottom"><Link className="sidebar-link" href="/">← Back to store</Link></div></aside>}
+function greeting(date = new Date()): string {
+  const hour = date.getHours();
+  return hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
+}
 
-export default function AdminDashboard(){ const { user, loading } = useAuth(); const adminQuotes = trpc.quotes.adminList.useQuery(undefined, { enabled: user?.role === "admin" }); const adminOrders = trpc.orders.adminList.useQuery(undefined, { enabled: user?.role === "admin" }); const adminCounts = trpc.quotes.counts.useQuery(undefined, { enabled: user?.role === "admin" }); if (loading) return <div className="confirmation-page"><span className="eyebrow">OPERATIONS</span><h1>Loading operations…</h1></div>; if (!user) return <div className="confirmation-page admin-gate"><Link href="/" className="back-link"><ArrowLeftToLine size={14}/> Back to Chadrey Wholesale</Link><span className="success-mark neutral"><ShieldCheck size={26}/></span><span className="eyebrow">ADMIN OPERATIONS</span><h1>Admin sign-in required.</h1><p>Use your Supabase administrator account to access the operations workspace. If you don't have access yet, ask a Chadrey Wholesale administrator to add you.</p><Link href="/admin/login" className="button button-primary">Sign in to operations <ArrowRight size={16}/></Link></div>; if (user.role !== "admin") return <div className="confirmation-page admin-gate"><Link href="/" className="back-link"><ArrowLeftToLine size={14}/> Back to Chadrey Wholesale</Link><span className="success-mark neutral"><ShieldCheck size={26}/></span><span className="eyebrow">ADMIN OPERATIONS</span><h1>Access restricted.</h1><p>This workspace is available to Chadrey Wholesale administrators only.</p><Link href="/dashboard" className="button button-secondary">Back to workspace</Link></div>; return <div className="workspace"><AdminNav/><main className="workspace-main"><header className="workspace-header"><div><span className="eyebrow">OPERATIONS / OVERVIEW</span><h1>Good morning, team.</h1><p>Here is what needs your attention today.</p></div><div className="workspace-header-actions"><Link className="icon-button" href="/admin/analytics" aria-label="Open analytics"><Bell size={17}/><i/></Link><span className="avatar admin-avatar">AD</span></div></header><section className="dashboard-grid admin-stats"><Link href="/admin" className="summary-card summary-highlight summary-card-link"><span className="summary-icon"><ClipboardList size={17}/></span><span>Quote requests</span><strong>{adminCounts.data?.quoteRequests ?? 0}</strong><small>Live quote requests</small></Link><Link href="/admin/quote" className="summary-card summary-card-link"><span className="summary-icon"><FileCheck2 size={17}/></span><span>Quotations sent</span><strong>{adminCounts.data?.quotations ?? 0}</strong><small>Live quotations</small></Link><Link href="/admin" className="summary-card summary-card-link"><span className="summary-icon"><FileText size={17}/></span><span>Invoices outstanding</span><strong>{adminCounts.data?.invoices ?? 0}</strong><small>Live invoices</small></Link><Link href="/admin/fulfilment" className="summary-card summary-card-link"><span className="summary-icon"><PackageCheck size={17}/></span><span>Orders in fulfilment</span><strong>{adminCounts.data?.orders ?? 0}</strong><small>Live orders</small></Link></section><section className="workspace-panel admin-request-panel"><div className="panel-heading"><div><span className="eyebrow">INBOX / {adminQuotes.data?.length ?? 0} REQUESTS</span><h2>Recent quote requests</h2></div><div className="panel-actions"><label className="compact-search"><Search size={15}/><input placeholder="Search requests"/></label><Link className="icon-button quiet" href="/admin/analytics" aria-label="Open analytics"><MoreHorizontal size={17}/></Link></div></div><div className="admin-table"><div className="admin-table-head"><span>Reference / customer</span><span>Request</span><span>Value</span><span>Received</span><span>Status</span><span/></div>{(adminQuotes.data ?? []).map(r => ({ ref: r.ref, customer: "Customer account", item: "Quote request", amount: r.status === "quoted" ? "Quotation sent" : "Awaiting review", age: new Date(r.createdAt).toLocaleDateString(), status: r.status, tone: r.status === "pending" ? "amber" : "green" })).map(r=><div className="admin-table-row" key={r.ref}><div><strong>{r.ref}</strong><span>{r.customer}</span></div><span>{r.item}</span><strong>{r.amount}</strong><span>{r.age}</span><span className={`status-pill ${r.tone}`}>{r.status}</span><Link className="row-chevron" href="/admin/quotes" aria-label="Open quote request"><ChevronRight size={17}/></Link></div>)}</div><Link href="/admin/quotes" className="panel-footer">Open quote requests <ArrowRight size={15}/></Link></section><div className="admin-bottom-grid"><section className="workspace-panel"><div className="panel-heading"><div><span className="eyebrow">FULFILMENT</span><h2>Orders to watch</h2></div><Link href="/admin" className="text-link">View orders <ArrowRight size={15}/></Link></div>{adminOrders.data?.length ? adminOrders.data.slice(0, 4).map(row => <Link className="fulfilment-row" href="/admin/fulfilment" key={row.order.id}><span className="order-icon"><Truck size={17}/></span><div><strong>Order #{row.order.id}</strong><span>{row.order.carrier || "Carrier pending"}{row.order.trackingNumber ? ` · ${row.order.trackingNumber}` : ""}</span></div><span className={`status-pill ${row.order.status === "shipped" ? "green" : "blue"}`}>{row.order.status}</span></Link>) : <div className="empty-state"><Truck size={22}/><p>No live orders to watch.</p></div>}</section><section className="workspace-panel alert-panel"><span className="eyebrow">OWNER ALERTS</span><h2>Never miss the important moments.</h2><p>Push alerts are reserved for two events: a new quote request and a confirmed payment.</p><Link className="alert-rule" href="/admin"><span className="notification-dot amber"/><span>New quote submitted</span><b>On</b></Link><Link className="alert-rule" href="/admin/analytics"><span className="notification-dot green"/><span>Payment confirmed</span><b>On</b></Link></section></div></main></div>}
+type StatProps = { href: string; label: string; value: number | undefined; hint: string; highlight?: boolean };
+
+function Stat({ href, label, value, hint, highlight }: StatProps) {
+  return (
+    <Link href={href} className="press block">
+      <Card className={cn("h-full p-4", highlight && "bg-tint text-white")}>
+        <p className={cn("text-footnote font-medium", highlight ? "text-white/80" : "text-label-2")}>{label}</p>
+        <p className="mt-1 text-largetitle font-bold tabular-nums">{value ?? "–"}</p>
+        <p className={cn("mt-0.5 text-footnote", highlight ? "text-white/80" : "text-label-2")}>{hint}</p>
+      </Card>
+    </Link>
+  );
+}
+
+export default function AdminDashboard() {
+  usePageTitle("Admin");
+  const { user } = useAuth();
+  const enabled = user?.role === "admin";
+  const counts = useQuery({ queryKey: ["admin-counts"], queryFn: fetchAdminCounts, enabled, staleTime: 30_000 });
+  const recent = useQuery({ queryKey: ["admin-recent-requests"], queryFn: () => fetchRecentRequests(6), enabled, staleTime: 30_000 });
+  const orders = useQuery({ queryKey: ["admin-orders-watch"], queryFn: () => fetchOrdersToWatch(5), enabled, staleTime: 30_000 });
+  const firstName = user?.name?.split(" ")[0] || "team";
+  const pending = counts.data?.pendingRequests ?? 0;
+
+  return (
+    <AdminLayout title={`${greeting()}, ${firstName}`} subtitle={pending > 0 ? `${pending} quote ${pending === 1 ? "request needs" : "requests need"} your attention.` : "Nothing is waiting on you right now."}>
+      <div className="space-y-7">
+        {counts.isError && <Notice tone="red">We could not load the live numbers. Pull to refresh or try again in a moment.</Notice>}
+
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+          <Stat href="/admin/quotes" label="Awaiting review" value={counts.data?.pendingRequests} hint="New quote requests" highlight={pending > 0} />
+          <Stat href="/admin/quotes" label="Quote requests" value={counts.data?.quoteRequests} hint="All time" />
+          <Stat href="/admin/quotes" label="Quotations" value={counts.data?.quotations} hint="Sent to customers" />
+          <Stat href="/admin/fulfilment" label="Orders" value={counts.data?.orders} hint="Paid and in progress" />
+        </div>
+
+        <ListGroup header="Quick actions">
+          <ListRow href="/admin/products/new" icon={<PackagePlus />} tone="blue" title="Add a product" subtitle="Photos, price and details" chevron />
+          <ListRow href="/admin/quotes" icon={<ClipboardList />} tone="orange" title="Review quote requests" chevron />
+          <ListRow href="/admin/users" icon={<Users />} tone="purple" title="Manage users" chevron />
+        </ListGroup>
+
+        <section>
+          {recent.data && recent.data.length === 0 ? (
+            <Card>
+              <EmptyState icon={FileText} title="No quote requests yet" description="Requests from customers will appear here as soon as they are sent." />
+            </Card>
+          ) : (
+            <ListGroup header="Recent quote requests">
+              {recent.isPending && <ListRow title="Loading…" />}
+              {(recent.data ?? []).map(request => (
+                <ListRow
+                  key={request.id}
+                  icon={<FileText />}
+                  tone={statusTone(request.status)}
+                  title={request.ref}
+                  subtitle={
+                    <>
+                      {request.company_name || request.contact_email || "Customer"} · <span className="whitespace-nowrap">{formatDate(request.created_at)}</span>
+                    </>
+                  }
+                  titleTrailing={<StatusBadge status={request.status} />}
+                  href={`/admin/quotes?id=${request.id}`}
+                  chevron
+                />
+              ))}
+            </ListGroup>
+          )}
+        </section>
+
+        {(orders.data?.length ?? 0) > 0 && (
+          <ListGroup header="Orders to watch">
+            {orders.data!.map(order => (
+              <ListRow
+                key={order.id}
+                icon={<Truck />}
+                tone="teal"
+                title={`Order ${order.id.slice(0, 8)}`}
+                subtitle={`${order.carrier || "Carrier pending"}${order.tracking_number ? ` · ${order.tracking_number}` : ""}`}
+                titleTrailing={<StatusBadge status={order.status} />}
+                href="/admin/fulfilment"
+                chevron
+              />
+            ))}
+          </ListGroup>
+        )}
+      </div>
+    </AdminLayout>
+  );
+}

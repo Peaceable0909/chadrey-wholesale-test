@@ -1,87 +1,194 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, ArrowRight, ArrowUp, Eye, Filter, Heart, Search, SlidersHorizontal, X } from "lucide-react";
-import { Link, useLocation } from "wouter";
-import { supabase } from "@/lib/supabase";
-import FormattedDescription from "@/components/FormattedDescription";
-import ProductShareButton from "@/components/ProductShareButton";
-import { productHref } from "@/lib/productRoute";
-import { useAuth } from "@/_core/hooks/useAuth";
-import { initialsFrom } from "@/lib/utils";
+import * as React from "react";
+import { ArrowUpDown, Heart, PackageSearch } from "lucide-react";
+import { useSearchParams } from "wouter";
+import { Button, ButtonLink, Chip, EmptyState, Notice, PageHeader, SearchField } from "@/components/ios";
+import { Container } from "@/components/layout/Container";
+import { SiteLayout } from "@/components/layout/SiteLayout";
+import { BackToTop } from "@/components/store/BackToTop";
+import { ProductCard, ProductGrid, ProductGridSkeleton } from "@/components/store/ProductCard";
+import { QuickView } from "@/components/store/QuickView";
+import { SampleNotice } from "@/components/store/SampleNotice";
+import { useCatalogue, useCategoryCounts } from "@/hooks/useCatalogue";
+import { usePageTitle } from "@/hooks/usePageTitle";
+import { useSavedProducts } from "@/hooks/useSavedProducts";
+import type { CatalogueSort, Product } from "@/lib/catalogue";
+import { formatNumber } from "@/lib/format";
+import { siteConfig } from "@/lib/siteConfig";
+import { cn } from "@/lib/utils";
 
-type CatalogueProduct = { id: string; name: string; category: string; moq: number; desc: string; tag: string; tone: string; image?: string; images: string[] };
-
-function CatalogueSkeletons() {
-  return <div className="product-grid catalogue-loading-grid" role="status" aria-label="Loading catalogue products">{Array.from({ length: 6 }, (_, index) => <article className="skeleton-product-card" key={index}><div className="skeleton-product-image"><span className="skeleton-badge"/><span className="skeleton-orbit"/></div><div className="skeleton-product-body"><span className="skeleton-line skeleton-meta"/><span className="skeleton-line skeleton-title"/><span className="skeleton-line skeleton-description"/><span className="skeleton-line skeleton-description short"/><div className="skeleton-footer"><span className="skeleton-line skeleton-link"/><span className="skeleton-pill"/></div></div></article>)}</div>;
-}
-
-const fallbackProducts: CatalogueProduct[] = [
-  { id: "oversized-tshirt", name: "100% Cotton Oversized T-Shirt", category: "Apparel", moq: 50, desc: "Heavyweight cotton, drop-shoulder fit, pre-shrunk for retail-ready quality.", tag: "Best seller", tone: "mint", images: [] },
-  { id: "fleece-hoodie", name: "Premium Fleece Hoodie", category: "Apparel", moq: 30, desc: "Brushed-fleece interior, structured hood, and a clean private-label base.", tag: "Low MOQ", tone: "sand", images: [] },
-  { id: "classic-polo", name: "Classic Pique Polo Shirt", category: "Apparel", moq: 50, desc: "Breathable pique knit with a reinforced collar and colorfast dye.", tag: "Popular", tone: "blue", images: [] },
-  { id: "cotton-tank", name: "Cotton Tank Top", category: "Apparel", moq: 100, desc: "Lightweight ribbed cotton, suited for print-on-demand runs.", tag: "New", tone: "rose", images: [] },
-  { id: "canvas-tote", name: "Recycled Canvas Tote", category: "Bags", moq: 100, desc: "Durable canvas base for retail, events, and branded merchandise.", tag: "Custom print", tone: "olive", images: [] },
-  { id: "travel-pouch", name: "Travel Organizer Pouch", category: "Bags", moq: 50, desc: "Compact zip pouch with multiple compartments and private-label options.", tag: "Flexible", tone: "lavender", images: [] },
+const SORTS: Array<{ value: CatalogueSort; label: string }> = [
+  { value: "newest", label: "Newest" },
+  { value: "moq", label: "Lowest MOQ" },
+  { value: "name", label: "Name A–Z" },
 ];
 
+const isSort = (value: string | null): value is CatalogueSort => SORTS.some(sort => sort.value === value);
+
 export default function Catalogue() {
-  const [, navigate] = useLocation();
-  const { user } = useAuth();
-  const [products, setProducts] = useState<CatalogueProduct[]>(fallbackProducts);
-  const [loading, setLoading] = useState(Boolean(supabase));
-  const [usingSampleData, setUsingSampleData] = useState(false);
-  const [loadError, setLoadError] = useState("");
-  const [query, setQuery] = useState("");
-  const [category, setCategory] = useState("All");
-  const [sort, setSort] = useState("featured");
-  const [saved, setSaved] = useState<string[]>([]);
-  const [visibleCount, setVisibleCount] = useState(4);
-  const [showBackToTop, setShowBackToTop] = useState(false);
-  const [quickView, setQuickView] = useState<CatalogueProduct | null>(null);
-  const [quickViewImageIndex, setQuickViewImageIndex] = useState(0);
-  const touchStartX = useRef<number | null>(null);
+  usePageTitle("Products");
+  const [params, setParams] = useSearchParams();
+  const saved = useSavedProducts();
+  const { categories } = useCategoryCounts();
+  const searchRef = React.useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    if (!supabase) { setLoading(false); return; }
-    let active = true;
-    void supabase.from("products").select("id,slug,name,description,short_description,category,moq,product_images(public_url,is_primary,sort_order)").eq("is_active", true).order("created_at", { ascending: false }).then(({ data, error }) => {
-      if (!active) return;
-      if (error) {
-        console.error("Failed to load live catalogue:", error);
-        setLoadError("We could not load the live catalogue, so sample products are shown below.");
-        setUsingSampleData(true);
-        setLoading(false);
-        return;
-      }
-      if (!data?.length) { setUsingSampleData(true); setLoading(false); return; }
-      const mapped = data.map((product: any): CatalogueProduct => {
-        const images = Array.isArray(product.product_images) ? [...product.product_images].sort((a, b) => Number(b.is_primary) - Number(a.is_primary) || a.sort_order - b.sort_order) : [];
-        return { id: product.slug, name: product.name, category: product.category, moq: product.moq, desc: product.short_description || product.description, tag: "Wholesale ready", tone: "mint", image: images[0]?.public_url, images: images.map(image => image.public_url).filter(Boolean) };
-      });
-      setProducts(mapped);
-      setUsingSampleData(false);
-      setLoading(false);
-    });
-    return () => { active = false; };
-  }, []);
+  const category = params.get("category") || "All";
+  const sort = isSort(params.get("sort")) ? (params.get("sort") as CatalogueSort) : "newest";
+  const savedOnly = params.get("saved") === "1";
+  const urlQuery = params.get("q") ?? "";
 
-  useEffect(() => { setVisibleCount(4); }, [query, category, sort]);
-  useEffect(() => {
-    if (!quickView) return;
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setQuickView(null);
-      if (event.key === "ArrowLeft") setQuickViewImageIndex(index => Math.max(0, index - 1));
-      if (event.key === "ArrowRight") setQuickViewImageIndex(index => Math.min((quickView.images.length || 1) - 1, index + 1));
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [quickView]);
+  // Typing updates the box immediately; the URL (and the request) follow after a short pause.
+  const [search, setSearch] = React.useState(urlQuery);
+  React.useEffect(() => setSearch(urlQuery), [urlQuery]);
+  React.useEffect(() => {
+    if (search === urlQuery) return;
+    const timer = window.setTimeout(() => update({ q: search }), 300);
+    return () => window.clearTimeout(timer);
+  }, [search]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const filtered = useMemo(() => products.filter(p => (category === "All" || p.category === category) && `${p.name} ${p.desc}`.toLowerCase().includes(query.toLowerCase())).sort((a, b) => sort === "moq" ? a.moq - b.moq : sort === "az" ? a.name.localeCompare(b.name) : 0), [products, query, category, sort]);
-  const visibleProducts = filtered.slice(0, visibleCount);
-  const categories = ["All", ...Array.from(new Set(products.map(product => product.category)))];
-  const openQuickView = (product: CatalogueProduct) => { setQuickView(product); setQuickViewImageIndex(0); };
-  const moveQuickViewImage = (direction: number) => setQuickViewImageIndex(index => Math.min(Math.max(index + direction, 0), Math.max((quickView?.images.length || 1) - 1, 0)));
-  const scrollToTop = () => window.scrollTo({ top: 0, behavior: "smooth" });
+  React.useEffect(() => {
+    if (params.get("focus") === "1") {
+      searchRef.current?.focus();
+      update({ focus: "" });
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  return <div className="app-shell"><header className="site-header reference-header"><Link href="/" className="brand"><span className="brand-mark">C</span><span>CHADREY<small>WHOLESALE</small></span></Link><nav className="main-nav"><Link href="/">Home</Link><Link className="active" href="/products">Products</Link><Link href="/quote">Request a Quote</Link><Link href="/dashboard">My Workspace</Link></nav><Link href={user ? "/dashboard" : "/login"} className="avatar" title={user?.name}>{initialsFrom(user?.name, user?.email)}</Link></header><main className="page-container">{usingSampleData && <p className="form-error" role="alert">{loadError || "Showing sample products — connect the live catalogue to see real inventory."}</p>}<div className="page-kicker"><span className="eyebrow">CATALOGUE / {products.length.toString().padStart(2, "0")} PRODUCTS</span><span className="catalogue-note"><span className="status-dot"/> {usingSampleData ? "Sample catalogue" : "Live sourcing catalogue"}</span></div><div className="catalogue-title"><div><h1>Find your next best seller.</h1><p>Wholesale-ready products with transparent MOQs and flexible customization options.</p></div><Link className="button button-primary" href="/quote">Build a quote <ArrowRight size={16}/></Link></div><div className="catalogue-toolbar"><label className="search-field"><Search size={17}/><input value={query} onChange={e => setQuery(e.target.value)} placeholder="Search products" /></label><div className="filter-tabs">{categories.map(item => <button className={category === item ? "selected" : ""} onClick={() => setCategory(item)} key={item}>{item}</button>)}</div><label className="sort-field"><SlidersHorizontal size={15}/><select value={sort} onChange={e => setSort(e.target.value)}><option value="featured">Featured</option><option value="moq">MOQ: low to high</option><option value="az">Name: A–Z</option></select></label></div>{loading ? <CatalogueSkeletons/> : <div className="product-grid catalogue-results-grid">{visibleProducts.map(p => <article className="product-card product-card-clickable" key={p.id} role="link" tabIndex={0} onClick={() => navigate(productHref(p.id))} onKeyDown={event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); navigate(productHref(p.id)); } }}><div className={`product-image ${p.tone}`}>{p.image ? <img src={p.image} alt={p.name} /> : <div className="product-glyph">{p.category === "Bags" ? "▱" : "□"}</div>}<span className="product-tag">{p.tag}</span><button className={`save-button ${saved.includes(p.id) ? "saved" : ""}`} onClick={event => { event.stopPropagation(); setSaved(s => s.includes(p.id) ? s.filter(x => x !== p.id) : [...s, p.id]); }} aria-label={`Save ${p.name}`}><Heart size={17} fill={saved.includes(p.id) ? "currentColor" : "none"} /></button></div><div className="product-card-body"><div className="product-meta"><span>{p.category}</span><strong>MOQ {p.moq}</strong></div><h2>{p.name}</h2><FormattedDescription text={p.desc} className="catalogue-description"/><div className="product-card-footer"><Link href={productHref(p.id)} className="text-link" onClick={event => event.stopPropagation()}>View details <ArrowRight size={15}/></Link><button type="button" className="mini-cta quick-view-trigger" onClick={event => { event.stopPropagation(); openQuickView(p); }}><Eye size={13}/> Quick view</button></div></div></article>)}</div>}{!loading && filtered.length > visibleProducts.length && <><button type="button" className="button button-secondary load-more-button" onClick={() => { setVisibleCount(count => count + 4); setShowBackToTop(true); }}><span>Load more products</span><ArrowRight size={16}/></button>{showBackToTop && <button type="button" className="back-to-top-button" onClick={scrollToTop} aria-label="Back to top"><ArrowUp size={16}/><span>Back to top</span></button>}</>}{!loading && filtered.length === 0 && <div className="empty-state"><Filter size={24}/><h2>No products found</h2><p>Try another search or clear the category filter.</p></div>}</main><footer className="reference-footer"><div className="footer-brand"><span className="brand-mountain">⌃</span><div><strong>Chadrey Wholesale</strong><small>Your trusted partner for wholesale success.</small></div></div><div className="footer-socials"><Link href="/contact" aria-label="Contact Chadrey on LinkedIn">in</Link><Link href="/contact" aria-label="Contact Chadrey on Facebook">f</Link><Link href="/contact" aria-label="Contact Chadrey on Instagram">◎</Link><Link href="/contact" aria-label="Email Chadrey">✉</Link></div><div className="footer-bottom"><span>© 2026 Chadrey Wholesale. All rights reserved.</span></div></footer>{quickView && <div className="quick-view-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) setQuickView(null); }}><section className="quick-view-modal" role="dialog" aria-modal="true" aria-labelledby="quick-view-title"><button type="button" className="quick-view-close" onClick={() => setQuickView(null)} aria-label="Close quick view"><X size={18}/></button><div className={`quick-view-image ${quickView.tone}`} onTouchStart={event => { touchStartX.current = event.touches[0]?.clientX ?? null; }} onTouchEnd={event => { const start = touchStartX.current; const end = event.changedTouches[0]?.clientX; touchStartX.current = null; if (start !== null && end !== undefined && Math.abs(end - start) > 32) moveQuickViewImage(end < start ? 1 : -1); }}><div className="quick-view-slide" aria-live="polite">{(quickView.images[quickViewImageIndex] || quickView.image) ? <img src={quickView.images[quickViewImageIndex] || quickView.image} alt={`${quickView.name} view ${quickViewImageIndex + 1}`}/> : <span className="product-glyph">{quickView.category === "Bags" ? "▱" : "□"}</span>}</div><span className="product-tag">{quickView.tag}</span>{quickView.images.length > 1 && <><button type="button" className="quick-view-arrow previous" onClick={() => moveQuickViewImage(-1)} disabled={quickViewImageIndex === 0} aria-label="Previous product image"><ArrowLeft size={16}/></button><button type="button" className="quick-view-arrow next" onClick={() => moveQuickViewImage(1)} disabled={quickViewImageIndex === quickView.images.length - 1} aria-label="Next product image"><ArrowRight size={16}/></button><div className="quick-view-dots" aria-label="Choose product image">{quickView.images.map((image, index) => <button type="button" className={index === quickViewImageIndex ? "selected" : ""} onClick={() => setQuickViewImageIndex(index)} key={image} aria-label={`Show product image ${index + 1}`}/>)}</div></>}</div><div className="quick-view-content"><span className="eyebrow">{quickView.category}</span><h2 id="quick-view-title">{quickView.name}</h2><p>{quickView.desc}</p><div className="quick-view-metrics"><span><strong>MOQ {quickView.moq}</strong><small>minimum order</small></span><span><strong>Wholesale</strong><small>quote pricing</small></span></div><div className="quick-view-actions"><Link className="button button-primary" href={productHref(quickView.id)} onClick={() => setQuickView(null)}>View full details <ArrowRight size={16}/></Link><Link className="button button-secondary" href={`/quote?product=${encodeURIComponent(quickView.id)}`} onClick={() => setQuickView(null)}>Request a quote</Link><ProductShareButton compact url={productHref(quickView.id)} name={quickView.name} description={quickView.desc}/></div></div></section></div>}</div>;
+  function update(changes: Record<string, string>) {
+    const next = new URLSearchParams(window.location.search);
+    for (const [key, value] of Object.entries(changes)) {
+      if (value && value !== "All" && !(key === "sort" && value === "newest")) next.set(key, value);
+      else next.delete(key);
+    }
+    setParams(next, { replace: true });
+  }
+
+  const catalogue = useCatalogue({ q: urlQuery, category, sort, slugs: savedOnly ? saved.slugs : undefined });
+  const [quickView, setQuickView] = React.useState<Product | null>(null);
+
+  const chipNames = categories.map(item => item.category);
+  if (category !== "All" && !chipNames.includes(category)) chipNames.unshift(category);
+  const filtered = Boolean(urlQuery || savedOnly || category !== "All");
+
+  return (
+    <SiteLayout>
+      <Container className="pt-4 md:pt-8">
+        <PageHeader
+          title="Products"
+          subtitle={catalogue.isLoading ? "Loading the catalogue…" : `${formatNumber(catalogue.total)} ${catalogue.total === 1 ? "product" : "products"}, sourced in ${siteConfig.sourcingCountry}`}
+          actions={
+            <ButtonLink href="/quote" className="hidden md:inline-flex">
+              Request a quote
+            </ButtonLink>
+          }
+        />
+      </Container>
+
+      {/* Search and categories stay in view while scrolling, like the App Store */}
+      <div className="material hairline-b sticky top-[calc(var(--nav-h)+env(safe-area-inset-top))] z-30 mt-4 py-3">
+        <Container className="flex flex-col gap-3 md:flex-row md:items-center md:gap-4">
+          <SearchField
+            ref={searchRef}
+            value={search}
+            onValueChange={setSearch}
+            placeholder="Search products"
+            wrapperClassName="md:w-80 md:shrink-0"
+          />
+          <div className="no-scrollbar -mx-4 flex gap-2 overflow-x-auto px-4 sm:-mx-6 sm:px-6 md:mx-0 md:px-0" role="group" aria-label="Categories">
+            <Chip selected={category === "All" && !savedOnly} onClick={() => update({ category: "All", saved: "" })}>
+              All
+            </Chip>
+            {saved.slugs.length > 0 && (
+              <Chip
+                selected={savedOnly}
+                icon={<Heart className={cn("size-3.5", savedOnly && "fill-current")} aria-hidden />}
+                onClick={() => update({ saved: savedOnly ? "" : "1", category: "All" })}>
+                Saved
+              </Chip>
+            )}
+            {chipNames.map(name => (
+              <Chip key={name} selected={category === name && !savedOnly} count={categories.find(item => item.category === name)?.count} onClick={() => update({ category: name, saved: "" })}>
+                {name}
+              </Chip>
+            ))}
+          </div>
+        </Container>
+      </div>
+
+      <Container className="pt-5 md:pt-7">
+        {catalogue.isSample && <SampleNotice className="mb-5" />}
+        {catalogue.isError && !catalogue.isSample && (
+          <Notice tone="red" className="mb-5">
+            We could not load the catalogue.{" "}
+            <button type="button" className="font-semibold underline" onClick={catalogue.retry}>
+              Try again
+            </button>
+          </Notice>
+        )}
+
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <p className="text-subhead text-label-2" aria-live="polite">
+            {catalogue.isLoading ? "" : savedOnly ? "Saved products" : urlQuery ? `Results for “${urlQuery}”` : category !== "All" ? category : "All products"}
+          </p>
+          <label className="relative inline-flex h-9 items-center rounded-full bg-surface pl-3 pr-8 text-subhead shadow-[inset_0_0_0_0.5px_var(--separator-strong)]">
+            <ArrowUpDown className="mr-1.5 size-4 text-label-2" aria-hidden />
+            <span className="sr-only">Sort by</span>
+            <select
+              value={sort}
+              onChange={event => update({ sort: event.target.value })}
+              className="appearance-none bg-transparent pr-1 text-subhead font-medium outline-none">
+              {SORTS.map(option => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+
+        {catalogue.isLoading ? (
+          <ProductGridSkeleton count={8} wide />
+        ) : catalogue.items.length === 0 ? (
+          <EmptyState
+            icon={savedOnly ? Heart : PackageSearch}
+            title={savedOnly ? "No saved products yet" : "No products found"}
+            description={savedOnly ? "Tap the heart on a product to keep it here for later." : "Try a different search, or clear the filters to see everything."}
+            action={
+              filtered && (
+                <Button variant="tinted" onClick={() => setParams(new URLSearchParams(), { replace: true })}>
+                  Clear filters
+                </Button>
+              )
+            }
+          />
+        ) : (
+          <>
+            <ProductGrid wide>
+              {catalogue.items.map((product, index) => (
+                <ProductCard
+                  key={product.id}
+                  product={product}
+                  priority={index < 4}
+                  saved={saved.isSaved(product.slug)}
+                  onToggleSave={() => saved.toggle(product.slug)}
+                  onQuickView={() => setQuickView(product)}
+                />
+              ))}
+            </ProductGrid>
+            {catalogue.hasMore && (
+              <div className="mt-8 flex flex-col items-center gap-2">
+                <Button variant="gray" size="lg" loading={catalogue.isLoadingMore} onClick={catalogue.loadMore}>
+                  Show more products
+                </Button>
+                <p className="text-footnote text-label-2">
+                  Showing {formatNumber(catalogue.items.length)} of {formatNumber(catalogue.total)}
+                </p>
+              </div>
+            )}
+          </>
+        )}
+      </Container>
+
+      <QuickView product={quickView} onClose={() => setQuickView(null)} />
+      <BackToTop />
+    </SiteLayout>
+  );
 }

@@ -1,17 +1,21 @@
-import { ArrowLeft, Compass } from "lucide-react";
-import { Link } from "wouter";
+import { Compass } from "lucide-react";
+import { ButtonLink } from "@/components/ios";
+import { CenteredState } from "@/components/layout/PageState";
+import { SiteLayout } from "@/components/layout/SiteLayout";
+import { usePageTitle } from "@/hooks/usePageTitle";
 
 export default function NotFound() {
+  usePageTitle("Page not found");
   return (
-    <main className="confirmation-page">
-      <Link href="/" className="back-link"><ArrowLeft size={14} /> Back to Chadrey Wholesale</Link>
-      <div className="document-card">
-        <span className="success-mark neutral"><Compass size={26} /></span>
-        <span className="eyebrow">PAGE NOT FOUND</span>
-        <h1>This page has wandered off.</h1>
-        <p>The page you're looking for doesn't exist, may have moved, or the link may be out of date.</p>
-        <Link href="/" className="button button-primary" style={{ marginTop: 22 }}>Return home</Link>
-      </div>
-    </main>
+    <SiteLayout>
+      <CenteredState icon={Compass} tone="gray" title="Page not found" description="This page may have moved, or the link is out of date.">
+        <ButtonLink href="/" size="lg">
+          Back to home
+        </ButtonLink>
+        <ButtonLink href="/products" variant="gray" size="lg">
+          Browse products
+        </ButtonLink>
+      </CenteredState>
+    </SiteLayout>
   );
 }

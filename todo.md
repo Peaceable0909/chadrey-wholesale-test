@@ -277,3 +277,15 @@
 - [x] Show a floating Back to Top button after users load more catalogue products
 - [x] Add a product-specific Related Products section to product-detail pages
 - [x] Validate carousel gestures, scroll behavior, related links, responsive layouts, and push the update to GitHub main
+
+- [x] Redesign the whole site in an iPhone / iOS style: design tokens with light and dark mode, grouped lists, large titles, bottom tab bars on phones, bottom sheets, and a shared component library in `client/src/components/ios`
+- [x] Add indicative pricing for imported goods: a price per product with quantity breaks (`price_tiers`), shown on cards, the product page and the quote form as a guide, and confirmed per customer in the quotation
+- [x] Add `supabase_product_pricing.sql` (additive, safe to re-run); the app keeps working and tells the admin when it has not been run yet
+- [x] Make adding products fast on a phone: photos first (compressed before upload), then name, category, MOQ and price; edit price, visibility and photos from the product list
+- [x] Move customer and admin overview pages onto Supabase reads, with server-side catalogue paging and search
+- [x] Add a shared auth context so pages no longer repeat profile requests, and guard `?next=` sign-in redirects
+- [x] Remove the unused template components (shadcn `ui/*`, showcase page, dashboard layout, chat box, map) that the new design replaced
+- [x] Add `wrangler.jsonc` so the Cloudflare Workers build (`chadrey-wholesale`) builds the site and serves it as a single-page app from `dist/public`
+- [ ] Apply `supabase_product_pricing.sql` to the live Supabase project, then add prices to the existing products
+- [ ] Move the quotation review, messages, invoice payment, order tracking and fulfilment pages from the old numeric-id tRPC backend to Supabase so they work with Supabase quote requests
+- [ ] Decide whether the Manus runtime plugin is still needed in production; it adds about 367 KB to `index.html`

@@ -1,8 +1,93 @@
-import { useState } from "react";
-import { ArrowLeft, ArrowRight, MessageCircle, Send } from "lucide-react";
-import { Link, useLocation } from "wouter";
-import { trpc } from "@/lib/trpc";
+import { useEffect, useRef, useState } from "react";
+import { ArrowUp } from "lucide-react";
+import { toast } from "sonner";
+import { useSearch } from "wouter";
 import { useAuth } from "@/_core/hooks/useAuth";
-import { initialsFrom } from "@/lib/utils";
+import { BackLink } from "@/components/ios";
+import { PageLoading, SignInRequired } from "@/components/layout/PageState";
+import { Container } from "@/components/layout/Container";
+import { SiteLayout } from "@/components/layout/SiteLayout";
+import { usePageTitle } from "@/hooks/usePageTitle";
+import { trpc } from "@/lib/trpc";
 
-export default function QuoteMessages(){ const [location] = useLocation(); const { user } = useAuth(); const quoteRequestId=Number(new URLSearchParams(location.split("?")[1]||"").get("quoteId")||1); const [body,setBody]=useState(""); const [sent,setSent]=useState(false); const createMessage=trpc.messages.create.useMutation(); const submit=async(e:React.FormEvent)=>{e.preventDefault(); if(!body.trim())return; await createMessage.mutateAsync({quoteRequestId,body}); setBody(""); setSent(true); setTimeout(()=>setSent(false),2200)}; return <div className="app-shell"><header className="site-header reference-header"><Link href="/" className="brand"><span className="brand-mark">C</span><span>CHADREY<small>WHOLESALE</small></span></Link><nav className="main-nav"><Link href="/dashboard">My Workspace</Link><Link href="/admin">Operations</Link></nav><Link href="/dashboard" className="avatar" title={user?.name}>{initialsFrom(user?.name, user?.email)}</Link></header><main className="page-container narrow"><Link href="/dashboard" className="back-link"><ArrowLeft size={15}/> Back to workspace</Link><span className="eyebrow">CONVERSATION / QUOTE {quoteRequestId}</span><h1>Keep the details together.</h1><p className="page-lede">Ask about lead time, payment terms, samples, or changes to the request.</p><section className="message-thread"><div className="message-bubble incoming"><span className="eyebrow">CHADREY TEAM</span><p>Thanks for your request. Reply here if you want to clarify any product or delivery requirements.</p></div>{sent&&<div className="message-bubble outgoing"><span className="eyebrow">YOU</span><p>Your message was sent to the Chadrey team.</p></div>}<form className="message-composer" onSubmit={submit}><textarea value={body} onChange={e=>setBody(e.target.value)} rows={4} placeholder="Write a message about this quote..."/><button className="button button-primary" type="submit"><Send size={15}/> Send message</button></form></section><Link href={`/quotation?quoteId=${quoteRequestId}`} className="text-link">Review quotation <ArrowRight size={15}/></Link></main><footer className="reference-footer"><div className="footer-brand"><span className="brand-mountain">⌃</span><div><strong>Chadrey Wholesale</strong><small>Your trusted partner for wholesale success.</small></div></div><div className="footer-socials"><Link href="/contact" aria-label="Contact Chadrey on LinkedIn">in</Link><Link href="/contact" aria-label="Contact Chadrey on Facebook">f</Link><Link href="/contact" aria-label="Contact Chadrey on Instagram">◎</Link><Link href="/contact" aria-label="Email Chadrey">✉</Link></div><div className="footer-bottom"><span>© 2026 Chadrey Wholesale. All rights reserved.</span></div></footer></div> }
+type Sent = { id: number; body: string };
+
+export default function QuoteMessages() {
+  usePageTitle("Messages");
+  const search = useSearch();
+  const { user, loading } = useAuth();
+  const quoteRequestId = Number(new URLSearchParams(search).get("quoteId"));
+  const [body, setBody] = useState("");
+  const [sent, setSent] = useState<Sent[]>([]);
+  const createMessage = trpc.messages.create.useMutation();
+  const endRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+  }, [sent.length]);
+
+  async function submit(event: React.FormEvent) {
+    event.preventDefault();
+    const text = body.trim();
+    if (!text) return;
+    try {
+      await createMessage.mutateAsync({ quoteRequestId, body: text });
+      setSent(current => [...current, { id: Date.now(), body: text }]);
+      setBody("");
+    } catch {
+      toast.error("Your message could not be sent. Please try again.");
+    }
+  }
+
+  if (loading) return <SiteLayout tabBar={false}><PageLoading /></SiteLayout>;
+  if (!user) return <SiteLayout><SignInRequired title="Sign in to message us" /></SiteLayout>;
+
+  return (
+    <SiteLayout tabBar={false} footer={false} className="pb-28">
+      <Container size="narrow" className="pt-2 md:pt-6">
+        <BackLink href="/dashboard">My quotes</BackLink>
+        <h1 className="mt-1 text-largetitle font-bold">Messages</h1>
+        <p className="mt-1 text-body text-label-2">Ask about lead time, payment terms, samples, or changes to your request.</p>
+
+        <div className="mt-8 space-y-2.5" aria-live="polite">
+          <p className="mx-auto max-w-xs text-center text-footnote text-label-2">Messages you send here go to the Chadrey team.</p>
+          {sent.map(message => (
+            <div key={message.id} className="flex justify-end">
+              <p className="max-w-[78%] whitespace-pre-wrap break-words rounded-[20px] rounded-br-[6px] bg-tint px-4 py-2.5 text-body text-white">{message.body}</p>
+            </div>
+          ))}
+          <div ref={endRef} />
+        </div>
+      </Container>
+
+      <form onSubmit={submit} className="material hairline-t pb-safe fixed inset-x-0 bottom-0 z-40">
+        <div className="gutter mx-auto flex max-w-[640px] items-end gap-2.5 pb-3 pt-3">
+          <label className="sr-only" htmlFor="message-body">
+            Message
+          </label>
+          <textarea
+            id="message-body"
+            rows={1}
+            value={body}
+            onChange={event => setBody(event.target.value)}
+            onKeyDown={event => {
+              if (event.key === "Enter" && !event.shiftKey && window.matchMedia("(hover: hover)").matches) {
+                event.preventDefault();
+                event.currentTarget.form?.requestSubmit();
+              }
+            }}
+            placeholder="Message"
+            className="max-h-32 min-h-11 flex-1 resize-none rounded-[22px] bg-fill-3 px-4 py-2.5 text-body outline-none placeholder:text-label-2 focus-visible:ring-2 focus-visible:ring-tint/40"
+          />
+          <button
+            type="submit"
+            aria-label="Send message"
+            disabled={!body.trim() || createMessage.isPending}
+            className="press grid size-11 shrink-0 place-items-center rounded-full bg-tint text-white disabled:bg-fill-1 disabled:text-label-3">
+            <ArrowUp className="size-5" strokeWidth={2.6} />
+          </button>
+        </div>
+      </form>
+    </SiteLayout>
+  );
+}

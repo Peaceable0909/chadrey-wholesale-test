@@ -10,6 +10,17 @@ import { trpc } from "./lib/trpc";
 
 const queryClient = new QueryClient();
 
+// Optional Umami analytics: only loaded when both variables are configured for this deployment.
+const analyticsEndpoint = import.meta.env.VITE_ANALYTICS_ENDPOINT;
+const analyticsWebsiteId = import.meta.env.VITE_ANALYTICS_WEBSITE_ID;
+if (analyticsEndpoint && analyticsWebsiteId) {
+  const script = document.createElement("script");
+  script.defer = true;
+  script.src = `${analyticsEndpoint}/umami`;
+  script.dataset.websiteId = analyticsWebsiteId;
+  document.body.appendChild(script);
+}
+
 const redirectToLoginIfUnauthorized = (error: unknown) => {
   if (!(error instanceof TRPCClientError) || typeof window === "undefined") return;
   if (error.message !== UNAUTHED_ERR_MSG) return;

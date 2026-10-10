@@ -1,61 +1,76 @@
-import { FormEvent, useState } from "react";
-import { Link, useLocation } from "wouter";
-import { useEffect } from "react";
-import { dashboardPathForRole, getOrCreateSupabaseProfile } from "@/lib/userProfile";
-import { getSupabaseClient, isGoogleSignInAvailable, isSupabaseConfigured } from "@/lib/supabase";
+import { FormEvent, useEffect, useState } from "react";
+import { useLocation, useSearch } from "wouter";
+import { AuthShell, GoogleMark } from "@/components/auth/AuthShell";
+import { Button, Field, Notice, SegmentedControl, TextInput } from "@/components/ios";
+import { SiteLayout } from "@/components/layout/SiteLayout";
+import { usePageTitle } from "@/hooks/usePageTitle";
 import { formatAuthError } from "@/lib/authErrors";
+import { safeNextPath } from "@/lib/authRedirect";
+import { getSupabaseClient, isGoogleSignInAvailable, isSupabaseConfigured } from "@/lib/supabase";
+import { dashboardPathForRole, getOrCreateSupabaseProfile } from "@/lib/userProfile";
+
+type Mode = "signin" | "signup" | "reset";
+
+const COPY: Record<Mode, { title: string; description: string; action: string }> = {
+  signin: { title: "Welcome back", description: "Sign in to see your quotes, orders and saved details.", action: "Sign in" },
+  signup: { title: "Create your account", description: "Request quotes and track your orders in one place.", action: "Create account" },
+  reset: { title: "Reset your password", description: "Enter your account email and we will send you a link to set a new password.", action: "Send reset link" },
+};
 
 export default function Login() {
+  usePageTitle("Sign in");
   const [, navigate] = useLocation();
-  const [mode, setMode] = useState<"signin" | "signup" | "reset">("signin");
+  const search = useSearch();
+  const next = safeNextPath(search);
+  const [mode, setMode] = useState<Mode>("signin");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
-  const [error, setError] = useState("");
+  const [notice, setNotice] = useState<{ tone: "red" | "green"; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [googleBusy, setGoogleBusy] = useState(false);
 
+  // Already signed in (or just returned from Google): go straight to where they were headed.
   useEffect(() => {
     if (!isSupabaseConfigured()) return;
     void getSupabaseClient().auth.getSession().then(async ({ data }) => {
       if (!data.session?.user) return;
       const profile = await getOrCreateSupabaseProfile(data.session.user);
-      navigate(dashboardPathForRole(profile.role));
+      navigate(next ?? dashboardPathForRole(profile.role));
     }).catch(() => undefined);
-  }, [navigate]);
+  }, [navigate, next]);
+
+  const switchMode = (value: Mode) => {
+    setMode(value);
+    setNotice(null);
+  };
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setBusy(true);
-    setError("");
+    setNotice(null);
     try {
       if (!isSupabaseConfigured()) throw new Error("Supabase is not configured for this environment.");
       const client = getSupabaseClient();
       if (mode === "reset") {
-        const { error: resetError } = await client.auth.resetPasswordForEmail(email.trim(), {
-          redirectTo: `${window.location.origin}/login`,
-        });
+        const { error: resetError } = await client.auth.resetPasswordForEmail(email.trim(), { redirectTo: `${window.location.origin}/login` });
         if (resetError) throw resetError;
-        setError("If an account exists for that email, a reset link is on its way.");
+        setNotice({ tone: "green", text: "If an account exists for that email, a reset link is on its way." });
         return;
       }
       if (mode === "signup") {
-        const { error: signUpError } = await client.auth.signUp({
-          email: email.trim(),
-          password,
-          options: { data: { full_name: name.trim() } },
-        });
+        const { error: signUpError } = await client.auth.signUp({ email: email.trim(), password, options: { data: { full_name: name.trim() } } });
         if (signUpError) throw signUpError;
-        setError("Account created. Check your email if confirmation is required, then sign in.");
-      } else {
-        const { error: signInError } = await client.auth.signInWithPassword({ email: email.trim(), password });
-        if (signInError) throw signInError;
-        const { data: sessionData } = await client.auth.getSession();
-        const profile = sessionData.session?.user ? await getOrCreateSupabaseProfile(sessionData.session.user) : null;
-        navigate(dashboardPathForRole(profile?.role ?? "user"));
+        setNotice({ tone: "green", text: "Account created. Check your email if confirmation is required, then sign in." });
+        return;
       }
+      const { error: signInError } = await client.auth.signInWithPassword({ email: email.trim(), password });
+      if (signInError) throw signInError;
+      const { data: sessionData } = await client.auth.getSession();
+      const profile = sessionData.session?.user ? await getOrCreateSupabaseProfile(sessionData.session.user) : null;
+      navigate(next ?? dashboardPathForRole(profile?.role ?? "user"));
     } catch (caught) {
-      setError(formatAuthError(caught));
+      setNotice({ tone: "red", text: formatAuthError(caught) });
     } finally {
       setBusy(false);
     }
@@ -63,44 +78,88 @@ export default function Login() {
 
   async function continueWithGoogle() {
     setGoogleBusy(true);
-    setError("");
+    setNotice(null);
     try {
       if (!isGoogleSignInAvailable()) throw new Error("Supabase is not configured for this environment.");
-      const { error: signInError } = await getSupabaseClient().auth.signInWithOAuth({
-        provider: "google",
-        options: { redirectTo: `${window.location.origin}/login` },
-      });
+      const redirectTo = `${window.location.origin}/login${next ? `?next=${encodeURIComponent(next)}` : ""}`;
+      const { error: signInError } = await getSupabaseClient().auth.signInWithOAuth({ provider: "google", options: { redirectTo } });
       if (signInError) throw signInError;
     } catch (caught) {
-      setError(formatAuthError(caught));
+      setNotice({ tone: "red", text: formatAuthError(caught) });
       setGoogleBusy(false);
     }
   }
 
+  const copy = COPY[mode];
+
   return (
-    <main className="confirmation-page">
-      <Link href="/" className="back-link">← Back to Chadrey Wholesale</Link>
-      <div className="document-card" style={{ maxWidth: 480, width: "100%" }}>
-        <span className="eyebrow">CUSTOMER ACCESS</span>
-        <h1>{mode === "signin" ? "Welcome back." : mode === "signup" ? "Create your workspace." : "Reset your password."}</h1>
-        <p>{mode === "reset" ? "Enter your account email and we will send you a link to set a new password." : "Use your secure Supabase account to manage quotes, invoices, payments, and deliveries."}</p>
-        <form onSubmit={submit} style={{ display: "grid", gap: 14, marginTop: 24 }}>
-          {mode === "signup" && <input className="form-input" placeholder="Full name" value={name} onChange={event => setName(event.target.value)} required />}
-          <input className="form-input" type="email" placeholder="Business email" value={email} onChange={event => setEmail(event.target.value)} required />
-          {mode !== "reset" && <input className="form-input" type="password" placeholder="Password (at least 6 characters)" value={password} onChange={event => setPassword(event.target.value)} minLength={6} required />}
-          {mode === "signin" && <button className="text-link" type="button" onClick={() => { setMode("reset"); setError(""); }} style={{ justifySelf: "start" }}>Forgot password?</button>}
-          {error && <p role="alert" style={{ color: error.startsWith("Account created") || error.startsWith("If an account") ? "#315d43" : "#a53b2a", margin: 0 }}>{error}</p>}
-          <button className="button button-primary" type="submit" disabled={busy || googleBusy}>{busy ? "Please wait…" : mode === "signin" ? "Sign in" : mode === "signup" ? "Create account" : "Send reset link"}</button>
+    <SiteLayout footer={false}>
+      <AuthShell title={copy.title} description={copy.description}>
+        {mode !== "reset" && (
+          <SegmentedControl
+            aria-label="Sign in or create an account"
+            className="mb-5"
+            value={mode}
+            onChange={switchMode}
+            options={[
+              { value: "signin", label: "Sign in" },
+              { value: "signup", label: "Create account" },
+            ]}
+          />
+        )}
+
+        <form onSubmit={submit} className="space-y-4 rounded-group bg-surface p-4">
+          {mode === "signup" && (
+            <Field label="Full name">
+              <TextInput autoComplete="name" value={name} onChange={event => setName(event.target.value)} placeholder="Your name" required />
+            </Field>
+          )}
+          <Field label="Email">
+            <TextInput type="email" autoComplete="email" inputMode="email" value={email} onChange={event => setEmail(event.target.value)} placeholder="you@company.com" required />
+          </Field>
+          {mode !== "reset" && (
+            <Field label="Password">
+              <TextInput
+                type="password"
+                autoComplete={mode === "signup" ? "new-password" : "current-password"}
+                value={password}
+                onChange={event => setPassword(event.target.value)}
+                placeholder="At least 6 characters"
+                minLength={6}
+                required
+              />
+            </Field>
+          )}
+          {notice && <Notice tone={notice.tone}>{notice.text}</Notice>}
+          <Button type="submit" size="lg" full loading={busy} disabled={googleBusy}>
+            {copy.action}
+          </Button>
+          {mode === "signin" && (
+            <button type="button" onClick={() => switchMode("reset")} className="mx-auto block text-subhead text-tint-text">
+              Forgot password?
+            </button>
+          )}
+          {mode === "reset" && (
+            <button type="button" onClick={() => switchMode("signin")} className="mx-auto block text-subhead text-tint-text">
+              Back to sign in
+            </button>
+          )}
         </form>
-        {mode !== "reset" && <><div className="login-divider"><span>or</span></div>
-        <button className="google-login-button" type="button" onClick={continueWithGoogle} disabled={busy || googleBusy}>
-          <span className="google-mark">G</span>
-          {googleBusy ? "Connecting…" : "Continue with Google"}
-        </button></>}
-        <button className="text-link" type="button" onClick={() => { setMode(mode === "signin" ? "signup" : "signin"); setError(""); }} style={{ marginTop: 18 }}>
-          {mode === "reset" ? "Back to sign in" : mode === "signin" ? "Need an account? Create one" : "Already have an account? Sign in"}
-        </button>
-      </div>
-    </main>
+
+        {mode !== "reset" && (
+          <>
+            <div className="my-5 flex items-center gap-3 text-footnote text-label-2" aria-hidden>
+              <span className="h-px flex-1 bg-separator" />
+              or
+              <span className="h-px flex-1 bg-separator" />
+            </div>
+            <Button variant="outline" size="lg" full onClick={continueWithGoogle} loading={googleBusy} disabled={busy}>
+              {!googleBusy && <GoogleMark />}
+              Continue with Google
+            </Button>
+          </>
+        )}
+      </AuthShell>
+    </SiteLayout>
   );
 }
