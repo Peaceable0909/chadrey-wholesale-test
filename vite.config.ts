@@ -149,7 +149,10 @@ function vitePluginManusDebugCollector(): Plugin {
   };
 }
 
-const plugins = [react(), tailwindcss(), vitePluginManusRuntime(), vitePluginManusDebugCollector()];
+// The Manus runtime is editor tooling (error overlay and a postMessage bridge to the Manus editor frame). It adds a
+// 367 KB inline script to the top of every page that has to be downloaded and run before the app starts, so it is
+// kept for local development and left out of production builds.
+const plugins = [react(), tailwindcss(), { ...vitePluginManusRuntime(), apply: "serve" as const }, vitePluginManusDebugCollector()];
 
 export default defineConfig({
   plugins,

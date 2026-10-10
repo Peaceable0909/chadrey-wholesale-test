@@ -25,12 +25,9 @@
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <link rel="manifest" href="/manifest.webmanifest" />
 
-    <!-- Inter is the fallback for non-Apple devices; iPhones and Macs render the real SF font -->
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
-      rel="stylesheet" />
+    <!-- No web fonts on purpose: a font stylesheet in the head blocks the whole page until another server answers,
+         which can mean a blank screen on a slow connection. Every device uses its own system font
+         (SF Pro on iPhone and Mac, Roboto on Android, Segoe UI on Windows); see --font-sans in index.css. -->
   </head>
 
   <body>
