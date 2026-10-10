@@ -1,143 +1,279 @@
-import { useEffect, useMemo, useState } from "react";
-import { ArrowLeft, ArrowRight, Check, ChevronDown, FileUp, Image as ImageIcon, Loader2, Plus, Trash2, X } from "lucide-react";
-import { Link, useLocation } from "wouter";
+import * as React from "react";
+import { FileUp, PackageSearch, Plus, X } from "lucide-react";
+import { useSearch } from "wouter";
 import { useAuth } from "@/_core/hooks/useAuth";
-import { supabase } from "@/lib/supabase";
-import { normalizeOptionGroups, type ProductOptionGroup } from "@/lib/productOptions";
-import { productSlugFromLocation } from "@/lib/productRoute";
-import { initialsFrom } from "@/lib/utils";
+import { BackLink, Button, ButtonLink, Card, EmptyState, Field, FormSection, ListGroup, ListRow, Notice, PageHeader, SectionHeader, TextArea, TextInput } from "@/components/ios";
+import { Container } from "@/components/layout/Container";
+import { PageLoading, SignInRequired } from "@/components/layout/PageState";
+import { SiteLayout } from "@/components/layout/SiteLayout";
+import { ProductPicker } from "@/components/store/ProductPicker";
+import { QuoteLineCard } from "@/components/store/QuoteLineCard";
+import { useProduct } from "@/hooks/useCatalogue";
+import { usePageTitle } from "@/hooks/usePageTitle";
+import { useScrollTopWhen } from "@/hooks/useScrollTopWhen";
+import type { Product } from "@/lib/catalogue";
+import { formatMoney, formatQty } from "@/lib/format";
+import { lineTotal } from "@/lib/pricing";
+import { indicativeTotals, MIN_BRIEF_LENGTH, newLine, readPrefill, referenceFileProblem, validateQuote, type ContactDetails, type QuoteLine } from "@/lib/quote";
+import { submitQuoteRequest } from "@/lib/quoteApi";
+import { errorMessage } from "@/lib/supabaseCompat";
 
-type ProductImage = { id: string; public_url: string; is_primary: boolean; sort_order: number; alt_text?: string | null; label?: string | null };
-type Product = { id: string; slug: string; name: string; category: string; moq: number; description: string; option_groups: unknown; colors: unknown; sizes: unknown; packaging_options: unknown; customization_options: unknown; product_images: ProductImage[] };
-type Line = { id: string; productId: string; quantity: number; selections: Record<string, string>; customValues: Record<string, string>; preferredImageIds: string[]; requirements: string };
-
-type ContactDetails = { name: string; company: string; email: string; phone: string; whatsapp: string; address: string };
-
-function newLine(product?: Product, overrides: Partial<Line> = {}): Line {
-  const groups = product ? normalizeOptionGroups(product) : [];
-  const selections = Object.fromEntries(groups.map(group => [group.key, group.options[0] || ""]));
-  const primary = product?.product_images.find(image => image.is_primary) || product?.product_images[0];
-  return { id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, productId: product?.id || "", quantity: product?.moq || 1, selections, customValues: {}, preferredImageIds: primary ? [primary.id] : [], requirements: "", ...overrides };
-}
-
-function readPrefill(search: string, product: Product) {
-  const params = new URLSearchParams(search);
-  const groups = normalizeOptionGroups(product);
-  const selections: Record<string, string> = {};
-  for (const group of groups) {
-    const value = params.get(group.key) || (group.key === "color" ? params.get("color") : group.key === "size" ? params.get("size") : group.key === "packaging" ? params.get("packaging") : group.key === "customization" ? params.get("customization") : null);
-    if (value && group.options.includes(value)) selections[group.key] = value;
-  }
-  return { quantity: Math.max(product.moq, Number(params.get("qty")) || product.moq), selections };
+function SuccessScreen({ reference }: { reference: string }) {
+  return (
+    <SiteLayout>
+      <Container size="narrow" className="py-14 md:py-24">
+        <div className="flex flex-col items-center text-center" role="status" aria-live="polite">
+          <span className="mb-6 grid size-24 place-items-center rounded-full bg-ios-green/15" style={{ animation: "pop-in 520ms cubic-bezier(0.2, 0.8, 0.2, 1) both" }}>
+            <svg viewBox="0 0 24 24" className="size-12 text-ios-green" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <path d="M5 12.5l4.5 4.5L19 7" strokeDasharray="24" style={{ animation: "draw-check 450ms 250ms ease-out both" }} />
+            </svg>
+          </span>
+          <h1 className="text-title1 font-bold">Request sent</h1>
+          <p className="mt-2 max-w-md text-body text-label-2">Thank you. We have your products, preferences and requirements. Our team will review everything and send your quotation.</p>
+          <Card className="mt-7 w-full max-w-sm p-5">
+            <p className="text-footnote font-medium uppercase tracking-wide text-label-2">Request reference</p>
+            <p className="mt-1 text-title2 font-bold tabular-nums">{reference}</p>
+            <p className="mt-1 text-subhead text-label-2">Track its status under My quotes.</p>
+          </Card>
+          <div className="mt-7 flex w-full max-w-sm flex-col gap-3">
+            <ButtonLink href="/dashboard" size="lg" full>
+              View my quotes
+            </ButtonLink>
+            <ButtonLink href="/products" variant="gray" size="lg" full>
+              Browse more products
+            </ButtonLink>
+          </div>
+        </div>
+      </Container>
+    </SiteLayout>
+  );
 }
 
 export default function QuoteRequest() {
-  const [location] = useLocation();
+  usePageTitle("Request a quote");
   const { user, loading: authLoading } = useAuth();
-  const [products, setProducts] = useState<Product[]>([]);
-  const [loadingProducts, setLoadingProducts] = useState(true);
-  const [lines, setLines] = useState<Line[]>([newLine()]);
-  const [overallRequirements, setOverallRequirements] = useState("");
-  const [contact, setContact] = useState<ContactDetails>({ name: "", company: "", email: "", phone: "", whatsapp: "", address: "" });
-  const [submittedRef, setSubmittedRef] = useState("");
-  const [submitError, setSubmitError] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-  const [referenceFile, setReferenceFile] = useState<File | null>(null);
-  const productParam = productSlugFromLocation(`${location}${window.location.search}`);
+  const search = useSearch();
+  // Product pages link here with ?product=<slug>; ?id= is accepted too, as on product URLs.
+  const urlParams = new URLSearchParams(search);
+  const productParam = urlParams.get("product") || urlParams.get("id") || "";
 
-  useEffect(() => {
-    if (!supabase) { setLoadingProducts(false); return; }
-    let active = true;
-    void supabase.from("products").select("id,slug,name,category,moq,description,option_groups,colors,sizes,packaging_options,customization_options,product_images(id,public_url,is_primary,sort_order,alt_text,label)").eq("is_active", true).order("created_at", { ascending: false }).then(({ data, error }) => {
-      if (!active) return;
-      if (error) setSubmitError(error.message);
-      const nextProducts = (data || []).map((product: any) => ({ ...product, product_images: Array.isArray(product.product_images) ? [...product.product_images].sort((a: ProductImage, b: ProductImage) => Number(b.is_primary) - Number(a.is_primary) || a.sort_order - b.sort_order) : [] })) as Product[];
-      setProducts(nextProducts);
-      setLoadingProducts(false);
-    });
-    return () => { active = false; };
-  }, []);
+  const [lines, setLines] = React.useState<QuoteLine[]>([]);
+  const [pickerTarget, setPickerTarget] = React.useState<"new" | string | null>(null);
+  const [brief, setBrief] = React.useState("");
+  const [contact, setContact] = React.useState<ContactDetails>({ name: "", company: "", email: "", phone: "", whatsapp: "", address: "" });
+  const [referenceFile, setReferenceFile] = React.useState<File | null>(null);
+  const [error, setError] = React.useState("");
+  const [submitting, setSubmitting] = React.useState(false);
+  const [submittedRef, setSubmittedRef] = React.useState("");
+  const errorRef = React.useRef<HTMLDivElement>(null);
+  const seeded = React.useRef(false);
 
-  useEffect(() => {
+  // Arriving from a product page: start the request with that product, quantity and chosen specs.
+  const prefill = useProduct(productParam);
+  React.useEffect(() => {
+    if (seeded.current || !prefill.product || prefill.product.isSample) return;
+    seeded.current = true;
+    setLines(current => (current.length ? current : [newLine(prefill.product, readPrefill(`?${search}`, prefill.product!))]));
+  }, [prefill.product]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  React.useEffect(() => {
     if (!user) return;
     setContact(current => ({ ...current, name: current.name || user.name, email: current.email || user.email || "" }));
   }, [user]);
 
-  useEffect(() => {
-    if (!products.length) return;
-    const selected = products.find(product => product.slug === productParam) || products[0];
-    setLines(current => {
-      if (current.length !== 1 || current[0]?.productId) return current;
-      const prefill = selected.slug === productParam ? readPrefill(window.location.search, selected) : {};
-      return [newLine(selected, prefill)];
-    });
-  }, [products, productParam]);
+  React.useEffect(() => {
+    if (error) errorRef.current?.scrollIntoView({ block: "center", behavior: "smooth" });
+  }, [error]);
 
-  const productById = useMemo(() => new Map(products.map(product => [product.id, product])), [products]);
-  const updateLine = (id: string, patch: Partial<Line>) => setLines(current => current.map(line => line.id === id ? { ...line, ...patch } : line));
-  const updateSelection = (line: Line, group: ProductOptionGroup, value: string) => updateLine(line.id, { selections: { ...line.selections, [group.key]: value } });
-  const updateCustomValue = (line: Line, group: ProductOptionGroup, value: string) => updateLine(line.id, { customValues: { ...line.customValues, [group.key]: value } });
-  const toggleImage = (line: Line, imageId: string) => updateLine(line.id, { preferredImageIds: line.preferredImageIds.includes(imageId) ? line.preferredImageIds.filter(id => id !== imageId) : [...line.preferredImageIds, imageId] });
-  const addLine = () => setLines(current => [...current, newLine(products[0])]);
+  // The confirmation replaces a long form, so bring the person back to the top to read it.
+  useScrollTopWhen(submittedRef);
+
+  const updateLine = (id: string, patch: Partial<QuoteLine>) => setLines(current => current.map(line => (line.id === id ? { ...line, ...patch } : line)));
+  const setContactField = (key: keyof ContactDetails) => (event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => setContact(current => ({ ...current, [key]: event.target.value }));
+
+  function pickProduct(product: Product) {
+    if (pickerTarget === "new") setLines(current => [...current, newLine(product)]);
+    else if (pickerTarget) setLines(current => current.map(line => (line.id === pickerTarget ? newLine(product, { id: line.id }) : line)));
+    setPickerTarget(null);
+  }
 
   function selectReferenceFile(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     event.target.value = "";
     if (!file) return;
-    const allowed = file.type.startsWith("image/") || ["application/pdf", "text/plain", "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"].includes(file.type);
-    if (!allowed || file.size > 10 * 1024 * 1024) return setSubmitError("Choose an image, PDF, DOC, DOCX, or TXT file up to 10 MB.");
-    setSubmitError(""); setReferenceFile(file);
+    const problem = referenceFileProblem(file);
+    if (problem) return setError(problem);
+    setError("");
+    setReferenceFile(file);
   }
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setSubmitError("");
-    if (!user) return setSubmitError("Please sign in before submitting a quote request.");
-    if (!lines.length || lines.some(line => !line.productId)) return setSubmitError("Choose a product for every request line.");
-    const invalidMoq = lines.find(line => line.quantity < (productById.get(line.productId)?.moq || 1));
-    if (invalidMoq) return setSubmitError("Every quantity must meet the selected product's MOQ.");
-    if (overallRequirements.trim().length < 10) return setSubmitError("Tell us what you need in at least a few words so we can prepare an accurate quote.");
+    setError("");
+    if (!user) return setError("Please sign in before submitting a quote request.");
+    const problem = validateQuote(lines, brief);
+    if (problem) return setError(problem);
     setSubmitting(true);
     try {
-      const ref = `WR-${new Date().getFullYear()}-${String(Date.now()).slice(-6)}`;
-      const client = supabase!;
-      const { data: request, error: requestError } = await client.from("quote_requests").insert({ ref, customer_id: user.uid, status: "pending", notes: overallRequirements.trim(), requirements: overallRequirements.trim(), company_name: contact.company.trim() || null, contact_email: contact.email.trim() || user.email, contact_phone: contact.phone.trim() || null, whatsapp: contact.whatsapp.trim() || null, delivery_address: contact.address.trim() || null }).select("id,ref").single();
-      if (requestError || !request) throw requestError || new Error("The quote request could not be created.");
-      const itemRows = lines.map(line => {
-        const customFormValue = Object.entries(line.customValues).filter(([, value]) => value.trim()).map(([key, value]) => `${key}: ${value.trim()}`).join("; ");
-        return { quote_request_id: request.id, product_id: line.productId, quantity: line.quantity, color: line.selections.color || "", size: line.selections.size || "", packaging: line.selections.packaging || "", customization: line.selections.customization || "", option_selections: line.selections, custom_form_value: customFormValue || null, requirements: line.requirements.trim() || null, preferred_image_ids: line.preferredImageIds };
-      });
-      const { error: itemError } = await client.from("quote_request_items").insert(itemRows);
-      if (itemError) {
-        await client.from("quote_requests").delete().eq("id", request.id);
-        throw itemError;
-      }
-      if (referenceFile) {
-        const safeName = referenceFile.name.replace(/[^a-zA-Z0-9._-]/g, "-");
-        const storagePath = `quote-references/${user.uid}/${request.id}/${Date.now()}-${safeName}`;
-        const { error: uploadError } = await client.storage.from("quote-references").upload(storagePath, referenceFile, { contentType: referenceFile.type, upsert: false });
-        if (uploadError) {
-          await client.from("quote_requests").delete().eq("id", request.id);
-          throw uploadError;
-        }
-        const { error: fileError } = await client.from("quote_request_files").insert({ quote_request_id: request.id, storage_path: storagePath, file_name: referenceFile.name, content_type: referenceFile.type || "application/octet-stream", size_bytes: referenceFile.size });
-        if (fileError) {
-          await client.storage.from("quote-references").remove([storagePath]);
-          await client.from("quote_requests").delete().eq("id", request.id);
-          throw fileError;
-        }
-      }
-      setSubmittedRef(request.ref);
+      const created = await submitQuoteRequest({ userId: user.uid, userEmail: user.email, lines, brief, contact, referenceFile });
+      setSubmittedRef(created.ref);
     } catch (caught) {
-      setSubmitError(caught instanceof Error ? caught.message : "Unable to submit the quote request. Please try again.");
+      setError(errorMessage(caught, "Unable to submit the quote request. Please try again."));
     } finally {
       setSubmitting(false);
     }
   }
 
-  if (authLoading || loadingProducts) return <div className="confirmation-page"><Loader2 className="spin"/><h1>Preparing your request…</h1><p>Loading live products and their available options.</p></div>;
-  if (!user) return <div className="confirmation-page"><span className="eyebrow">REQUEST A QUOTE</span><h1>Sign in to build a quote.</h1><p>Sign in so we can save your requirements and send the quotation to your account.</p><Link href="/login?next=/quote" className="button button-primary">Sign in to continue <ArrowRight size={16}/></Link></div>;
-  if (submittedRef) return <div className="app-shell"><header className="site-header reference-header"><Link href="/" className="brand"><span className="brand-mark">C</span><span>CHADREY<small>WHOLESALE</small></span></Link></header><main className="confirmation-page quote-success-page" role="status" aria-live="polite"><div className="success-mark quote-success-mark" aria-hidden="true"><span className="success-ring"/><Check size={27}/></div><span className="eyebrow success-eyebrow">REQUEST RECEIVED</span><h1>Your quote request has been sent.</h1><p>Thank you. We have received your products, preferences, requirements, and any reference material. Our team will review everything and prepare your quotation.</p><div className="success-next-step"><strong>What happens next?</strong><span>We will contact you when your quotation is ready. You can track the request and its status from your workspace.</span></div><div className="reference-card"><span>Request reference</span><strong>{submittedRef}</strong><small>Track it from your workspace.</small></div><div className="hero-actions"><Link href="/dashboard" className="button button-primary">View my quotes <ArrowRight size={16}/></Link><Link href="/products" className="button button-secondary">Browse more products</Link></div></main><footer className="reference-footer"><div className="footer-brand"><span className="brand-mountain">⌃</span><div><strong>Chadrey Wholesale</strong><small>Your trusted partner for wholesale success.</small></div></div><div className="footer-socials"><Link href="/contact" aria-label="Contact Chadrey on LinkedIn">in</Link><Link href="/contact" aria-label="Contact Chadrey on Facebook">f</Link><Link href="/contact" aria-label="Contact Chadrey on Instagram">◎</Link><Link href="/contact" aria-label="Email Chadrey">✉</Link></div><div className="footer-bottom"><span>© 2026 Chadrey Wholesale. All rights reserved.</span></div></footer></div>;
+  if (authLoading) return <SiteLayout tabBar={false}><PageLoading label="Preparing your request…" /></SiteLayout>;
+  if (!user) return <SiteLayout><SignInRequired title="Sign in to request a quote" description="Sign in so we can save your requirements and send the quotation to your account." /></SiteLayout>;
+  if (submittedRef) return <SuccessScreen reference={submittedRef} />;
 
-  return <div className="app-shell"><header className="site-header reference-header"><Link href="/" className="brand"><span className="brand-mark">C</span><span>CHADREY<small>WHOLESALE</small></span></Link><nav className="main-nav"><Link href="/">Home</Link><Link href="/products">Products</Link><Link className="active" href="/quote">Request a Quote</Link><Link href="/dashboard">My Workspace</Link></nav><Link href="/dashboard" className="avatar" title={user.name}>{initialsFrom(user.name, user.email)}</Link></header><main className="page-container narrow quote-page"><Link href="/products" className="back-link"><ArrowLeft size={15}/> Back to products</Link><div className="page-kicker"><span className="eyebrow">REQUEST A QUOTE</span><span className="step-progress"><i/><i/><i/></span></div><div className="quote-page-heading"><div><h1>Tell us exactly what you need.</h1><p className="page-lede">Choose the products, options, and image references you prefer. Then use the requirements box to describe anything else our sourcing team should know.</p></div><span className="quote-secure-note">Your request is saved to your workspace.</span></div><form onSubmit={submit}><section className="form-section"><div className="form-section-heading"><div><span className="eyebrow">01 / PRODUCT REQUIREMENTS</span><h2>Build your request</h2></div><button type="button" className="button button-secondary small" onClick={addLine} disabled={!products.length}><Plus size={15}/> Add another product</button></div>{lines.map((line, index) => { const product = productById.get(line.productId); const groups = product ? normalizeOptionGroups(product) : []; return <div className="quote-line enhanced-quote-line" key={line.id}><div className="quote-line-top"><span className="line-number">{String(index + 1).padStart(2, "0")}</span><div className="quote-line-title"><strong>{product?.name || "Choose a product"}</strong>{product && <span>{product.category} · MOQ {product.moq}</span>}</div>{lines.length > 1 && <button type="button" className="remove-line" onClick={() => setLines(current => current.filter(item => item.id !== line.id))}><Trash2 size={15}/> Remove</button>}</div><div className="form-grid"><label className="field wide">Product<select value={line.productId} onChange={event => { const next = productById.get(event.target.value); if (next) { const prefill = newLine(next); updateLine(line.id, { productId: next.id, quantity: next.moq, selections: prefill.selections, customValues: {}, preferredImageIds: prefill.preferredImageIds, requirements: "" }); } }}><option value="">Choose a live catalogue product</option>{products.map(item => <option key={item.id} value={item.id}>{item.name} · MOQ {item.moq}</option>)}</select></label><label className="field">Quantity<input type="number" min={product?.moq || 1} value={line.quantity} onChange={event => updateLine(line.id, { quantity: Math.max(product?.moq || 1, Number(event.target.value) || 1) })}/><small>{product ? `Minimum order: ${product.moq}` : "Select a product first"}</small></label>{groups.map(group => <label className="field" key={group.key}>{group.label}<select value={line.selections[group.key] || ""} onChange={event => updateSelection(line, group, event.target.value)}><option value="">Choose {group.label.toLowerCase()}</option>{group.options.map(option => <option key={option}>{option}</option>)}<option value="__other__">Other / not listed</option></select>{line.selections[group.key] === "__other__" && <input className="nested-option-input" value={line.customValues[group.key] || ""} onChange={event => updateCustomValue(line, group, event.target.value)} placeholder={`Enter ${group.label.toLowerCase()}`}/>}</label>)}{product && product.product_images.length > 0 && <div className="field wide preferred-images-field"><div className="field-heading"><span>Preferred product images</span><small>Select one or more views you prefer.</small></div><div className="preferred-image-grid">{product.product_images.map((image, imageIndex) => <button type="button" className={`preferred-image ${line.preferredImageIds.includes(image.id) ? "selected" : ""}`} aria-pressed={line.preferredImageIds.includes(image.id)} onClick={() => toggleImage(line, image.id)} key={image.id}><img src={image.public_url} alt={image.alt_text || `${product.name} view ${imageIndex + 1}`}/><span>{line.preferredImageIds.includes(image.id) ? <Check size={13}/> : <ImageIcon size={13}/>} {image.label || `View ${imageIndex + 1}`}</span></button>)}</div></div>}<label className="field wide requirements-field"><span>What should we know about this product?</span><small>Include dimensions, materials, branding, color breakdown, deadline, or anything not covered above.</small><textarea rows={5} value={line.requirements} onChange={event => updateLine(line.id, { requirements: event.target.value })} placeholder="Write the complete product-specific requirements here…"/></label></div></div>; })}</section><section className="form-section overall-requirements-section"><div className="form-section-heading"><div><span className="eyebrow">02 / YOUR BRIEF</span><h2>Tell us everything else</h2></div><ChevronDown size={20} color="var(--green)"/></div><label className="field wide requirements-field main-requirements-field"><span>Overall request requirements <strong>*</strong></span><small>Use this space for shared instructions, intended use, delivery destination, timing, target budget, and any request that applies to the full order.</small><textarea required minLength={10} rows={8} value={overallRequirements} onChange={event => setOverallRequirements(event.target.value)} placeholder="Example: We need a mixed wholesale order for a school campaign arriving before…"/></label></section><section className="form-section"><div className="form-section-heading"><div><span className="eyebrow">03 / REFERENCE MATERIAL</span><h2>Show us an example</h2></div><FileUp size={20} color="var(--green)"/></div><label className="reference-upload-field"><input type="file" accept="image/*,.pdf,.doc,.docx,.txt" onChange={selectReferenceFile}/><span><FileUp size={17}/> {referenceFile ? referenceFile.name : "Upload an additional image or file"}</span><small>Optional · Image, PDF, DOC, DOCX, or TXT · up to 10 MB</small></label>{referenceFile && <button type="button" className="remove-reference" onClick={() => setReferenceFile(null)}><X size={14}/> Remove reference file</button>}</section><section className="form-section"><div className="form-section-heading"><div><span className="eyebrow">04 / CONTACT AND DELIVERY</span><h2>Where should we send the quote?</h2></div></div><div className="form-grid"><label className="field">Full name<input required value={contact.name} onChange={event => setContact({ ...contact, name: event.target.value })} placeholder="Your name"/></label><label className="field">Company<input value={contact.company} onChange={event => setContact({ ...contact, company: event.target.value })} placeholder="Company or store name"/></label><label className="field">Work email<input required type="email" value={contact.email} onChange={event => setContact({ ...contact, email: event.target.value })} placeholder="you@company.com"/></label><label className="field">Phone number<input required value={contact.phone} onChange={event => setContact({ ...contact, phone: event.target.value })} placeholder="+234 …"/></label><label className="field">WhatsApp number<input value={contact.whatsapp} onChange={event => setContact({ ...contact, whatsapp: event.target.value })} placeholder="If different"/></label><label className="field wide">Delivery address<textarea required rows={3} value={contact.address} onChange={event => setContact({ ...contact, address: event.target.value })} placeholder="Street, city, state, country"/></label></div></section><section className="form-section quote-summary-section"><div className="form-section-heading"><div><span className="eyebrow">05 / REVIEW BEFORE SENDING</span><h2>Check your request</h2></div><Check size={20} color="var(--green)"/></div><div className="quote-summary-list">{lines.map((line, index) => { const product = productById.get(line.productId); const selectedImages = product?.product_images.filter(image => line.preferredImageIds.includes(image.id)) || []; return <article className="quote-summary-item" key={line.id}><div><span className="line-number">{String(index + 1).padStart(2, "0")}</span><strong>{product?.name || "Product not selected"}</strong><span>Quantity {line.quantity}</span></div><p>{Object.entries(line.selections).filter(([, value]) => value && value !== "__other__").map(([key, value]) => `${key}: ${value}`).join(" · ") || "No options selected"}{selectedImages.length ? ` · Images: ${selectedImages.map(image => image.label || "selected view").join(", ")}` : ""}</p><small>{line.requirements || "No product-specific requirements."}</small></article>; })}</div><div className="quote-summary-brief"><strong>Overall requirements</strong><p>{overallRequirements || "Not yet completed"}</p>{referenceFile && <small>Reference file: {referenceFile.name}</small>}</div></section>{submitError && <p className="form-error" role="alert">{submitError}</p>}<div className="form-submit-row"><span className="quote-form-footnote">We will review the request before sending pricing.</span><button className="button button-primary" type="submit" disabled={submitting || !products.length}>{submitting ? <><Loader2 className="spin" size={16}/> Sending request…</> : <>Submit quote request <ArrowRight size={16}/></>}</button></div></form></main><footer className="reference-footer"><div className="footer-brand"><span className="brand-mountain">⌃</span><div><strong>Chadrey Wholesale</strong><small>Your trusted partner for wholesale success.</small></div></div><div className="footer-socials"><Link href="/contact" aria-label="Contact Chadrey on LinkedIn">in</Link><Link href="/contact" aria-label="Contact Chadrey on Facebook">f</Link><Link href="/contact" aria-label="Contact Chadrey on Instagram">◎</Link><Link href="/contact" aria-label="Email Chadrey">✉</Link></div><div className="footer-bottom"><span>© 2026 Chadrey Wholesale. All rights reserved.</span></div></footer></div>;
+  const totals = indicativeTotals(lines);
+  const seedingFromProduct = Boolean(productParam) && prefill.isLoading && lines.length === 0;
+
+  return (
+    <SiteLayout tabBar={false} footer={false} className="pb-40">
+      <Container size="form" className="pt-2 md:pt-6">
+        <BackLink href="/products">Products</BackLink>
+        <PageHeader title="Request a quote" subtitle="Tell us what you need and we will send a quotation. Prices shown here are a guide." className="mt-1" />
+
+        <form onSubmit={submit} className="mt-7 space-y-7">
+          <section aria-labelledby="products-heading" className="space-y-3">
+            <SectionHeader as="h2" title={<span id="products-heading">Products</span>} />
+            {seedingFromProduct ? (
+              <PageLoading label="Loading your product…" />
+            ) : lines.length === 0 ? (
+              <Card>
+                <EmptyState
+                  icon={PackageSearch}
+                  title="Add your first product"
+                  description="Choose from the catalogue. You can add as many products as you need to one request."
+                  action={
+                    <Button size="lg" onClick={() => setPickerTarget("new")}>
+                      <Plus className="size-5" aria-hidden /> Choose a product
+                    </Button>
+                  }
+                />
+              </Card>
+            ) : (
+              <>
+                {lines.map((line, index) => (
+                  <QuoteLineCard
+                    key={line.id}
+                    line={line}
+                    index={index}
+                    canRemove={lines.length > 1}
+                    onChange={patch => updateLine(line.id, patch)}
+                    onRemove={() => setLines(current => current.filter(item => item.id !== line.id))}
+                    onChangeProduct={() => setPickerTarget(line.id)}
+                  />
+                ))}
+                <Button variant="tinted" size="lg" full onClick={() => setPickerTarget("new")}>
+                  <Plus className="size-5" aria-hidden /> Add another product
+                </Button>
+              </>
+            )}
+          </section>
+
+          <FormSection title="Your request" description="This is the first thing our team reads. The more detail you give, the more accurate your quotation.">
+            <Field label="Tell us exactly what you need" hint="Intended use, delivery timing, target budget, and anything that applies to the whole order.">
+              <TextArea required minLength={MIN_BRIEF_LENGTH} rows={5} value={brief} onChange={event => setBrief(event.target.value)} placeholder="e.g. A mixed order for our school campaign, needed before June." />
+            </Field>
+          </FormSection>
+
+          <section>
+            <h2 className="px-4 pb-2 text-footnote font-medium uppercase tracking-wide text-label-2">Reference (optional)</h2>
+            <ListGroup footer="An image, PDF, DOC, DOCX or TXT file up to 10 MB. Handy for logos or sample designs.">
+              {referenceFile ? (
+                <ListRow
+                  icon={<FileUp />}
+                  tone="blue"
+                  title={referenceFile.name}
+                  subtitle={`${(referenceFile.size / 1024).toFixed(0)} KB`}
+                  trailing={
+                    <Button variant="plain" size="icon-sm" aria-label="Remove reference file" onClick={() => setReferenceFile(null)}>
+                      <X className="size-5" />
+                    </Button>
+                  }
+                />
+              ) : (
+                <label className="row-separator flex min-h-11 cursor-pointer items-center gap-3 px-4 py-2.5 transition-colors hover:bg-fill-4/60 active:bg-fill-4 [--sep-inset:60px]">
+                  <span className="grid size-8 shrink-0 place-items-center rounded-[8px] bg-ios-blue text-white">
+                    <FileUp className="size-[18px]" />
+                  </span>
+                  <span className="flex-1 text-body text-tint-text">Add a photo or file</span>
+                  <input type="file" accept="image/*,.pdf,.doc,.docx,.txt" onChange={selectReferenceFile} className="sr-only" />
+                </label>
+              )}
+            </ListGroup>
+          </section>
+
+          <FormSection title="Contact and delivery">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label="Full name">
+                <TextInput required autoComplete="name" value={contact.name} onChange={setContactField("name")} placeholder="Your name" />
+              </Field>
+              <Field label="Company" optional>
+                <TextInput autoComplete="organization" value={contact.company} onChange={setContactField("company")} placeholder="Company or store name" />
+              </Field>
+              <Field label="Email">
+                <TextInput required type="email" autoComplete="email" value={contact.email} onChange={setContactField("email")} placeholder="you@company.com" />
+              </Field>
+              <Field label="Phone">
+                <TextInput required type="tel" autoComplete="tel" value={contact.phone} onChange={setContactField("phone")} placeholder="+234 …" />
+              </Field>
+              <Field label="WhatsApp" optional className="sm:col-span-2">
+                <TextInput type="tel" value={contact.whatsapp} onChange={setContactField("whatsapp")} placeholder="If different from your phone" />
+              </Field>
+              <Field label="Delivery address" className="sm:col-span-2">
+                <TextArea required rows={3} autoComplete="street-address" value={contact.address} onChange={setContactField("address")} placeholder="Street, city, state, country" />
+              </Field>
+            </div>
+          </FormSection>
+
+          {lines.length > 0 && (
+            <ListGroup header="Summary" footer="Totals are indicative. Import costs and exchange rates change, so your quotation confirms the final price.">
+              {lines.map(line => {
+                const total = line.product ? lineTotal(line.product.pricing, line.quantity) : null;
+                return (
+                  <ListRow
+                    key={line.id}
+                    title={line.product?.name ?? "Product"}
+                    subtitle={`${formatQty(line.quantity, line.product?.pricing.unit)}`}
+                    value={total !== null && line.product ? formatMoney(total, line.product.pricing.currency) : "On request"}
+                  />
+                );
+              })}
+              {totals.map(item => (
+                <ListRow key={item.currency} title={<span className="font-semibold">Indicative total{totals.length > 1 ? ` (${item.currency})` : ""}</span>} value={<span className="font-bold text-label">{formatMoney(item.total, item.currency)}</span>} />
+              ))}
+            </ListGroup>
+          )}
+
+          <div ref={errorRef}>{error && <Notice tone="red">{error}</Notice>}</div>
+
+          <div className="material hairline-t pb-safe fixed inset-x-0 bottom-0 z-40">
+            <div className="gutter mx-auto flex max-w-[760px] items-center gap-3 pb-3 pt-3">
+              <div className="min-w-0 flex-1">
+                <p className="text-caption text-label-2">{lines.length === 0 ? "No products yet" : `${lines.length} ${lines.length === 1 ? "product" : "products"}`}</p>
+                <p className="truncate text-headline font-bold tabular-nums">{totals.length === 1 ? formatMoney(totals[0].total, totals[0].currency) : totals.length > 1 ? "Multiple currencies" : "Price on request"}</p>
+              </div>
+              <Button type="submit" size="lg" className="px-8" loading={submitting} disabled={lines.length === 0}>
+                Send request
+              </Button>
+            </div>
+          </div>
+        </form>
+      </Container>
+
+      <ProductPicker
+        open={pickerTarget !== null}
+        onOpenChange={open => {
+          if (!open) setPickerTarget(null);
+        }}
+        onPick={pickProduct}
+        title={pickerTarget === "new" ? "Add a product" : "Change product"}
+      />
+    </SiteLayout>
+  );
 }

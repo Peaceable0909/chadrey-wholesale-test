@@ -1,4 +1,57 @@
-import { ArrowRight, Check, FileText, PackageCheck, Search, Truck } from "lucide-react";
-import { Link } from "wouter";
-const steps=[{icon:Search,title:"Browse products",text:"Explore verified wholesale products, minimum order quantities, variants, and customization options."},{icon:FileText,title:"Request a quote",text:"Bundle the products you need and share quantities, packaging, and production requirements."},{icon:Check,title:"Review the quotation",text:"Receive clear line-item pricing and decide when your requirements are ready to move forward."},{icon:PackageCheck,title:"Confirm your order",text:"Accept the quotation, complete payment, and keep every commercial document connected."},{icon:Truck,title:"Track fulfilment",text:"Follow production, shipping, tracking, and delivery progress from one workspace."}];
-export default function HowItWorks(){return <div className="app-shell"><header className="site-header reference-header"><Link href="/" className="brand"><span className="brand-mountain">⌃</span><span>Chadrey<strong>Wholesale</strong></span></Link><nav className="main-nav"><Link href="/">Home</Link><Link href="/products">Products</Link><Link href="/quote">Request a Quote</Link><Link href="/how-it-works">How It Works</Link><Link href="/contact">Contact</Link></nav></header><main className="simple-public-page"><span className="eyebrow">A CLEARER WHOLESALE JOURNEY</span><h1>How Chadrey works.</h1><p className="page-lede">A practical, connected process for sourcing products, reviewing commercial terms, and tracking every delivery milestone.</p><div className="how-it-works-grid">{steps.map(({icon:Icon,title,text},index)=><article className="how-step" key={title}><span className="how-step-number">0{index+1}</span><Icon size={26}/><h2>{title}</h2><p>{text}</p></article>)}</div><section className="public-cta"><div><span className="eyebrow">READY TO START</span><h2>Bring your next order into one workspace.</h2></div><Link href="/quote" className="button button-primary">Request a Quote <ArrowRight size={16}/></Link></section></main><footer className="reference-footer"><div className="footer-brand"><span className="brand-mountain">⌃</span><div><strong>Chadrey Wholesale</strong><small>Your trusted partner for wholesale success.</small></div></div><div className="footer-socials"><Link href="/contact" aria-label="Contact Chadrey on LinkedIn">in</Link><Link href="/contact" aria-label="Contact Chadrey on Facebook">f</Link><Link href="/contact" aria-label="Contact Chadrey on Instagram">◎</Link><Link href="/contact" aria-label="Email Chadrey">✉</Link></div><div className="footer-bottom"><span>© 2026 Chadrey Wholesale. All rights reserved.</span></div></footer></div>}
+import { ClipboardList, CreditCard, FileCheck2, Search, Truck, type LucideIcon } from "lucide-react";
+import { ButtonLink, Card, PageHeader, toneSolid } from "@/components/ios";
+import { Container } from "@/components/layout/Container";
+import { SiteLayout } from "@/components/layout/SiteLayout";
+import { usePageTitle } from "@/hooks/usePageTitle";
+import type { Tone } from "@/lib/categories";
+import { siteConfig } from "@/lib/siteConfig";
+import { cn } from "@/lib/utils";
+
+const STEPS: Array<{ icon: LucideIcon; tone: Tone; title: string; text: string }> = [
+  { icon: Search, tone: "blue", title: "Browse products", text: `Explore goods from dealers in ${siteConfig.sourcingCountry}, with minimum orders, prices by quantity and options.` },
+  { icon: ClipboardList, tone: "orange", title: "Request a quote", text: "Pick your products and quantities, then tell us anything specific about sizes, branding or timing." },
+  { icon: FileCheck2, tone: "indigo", title: "Review your quotation", text: "Import prices move with exchange rates and freight, so we confirm each price and send a clear quotation." },
+  { icon: CreditCard, tone: "green", title: "Confirm and pay", text: "Accept the quotation and pay securely. Your quote, invoice and payment stay together in your account." },
+  { icon: Truck, tone: "teal", title: "Track delivery", text: "Follow your order from production and shipping through to delivery." },
+];
+
+export default function HowItWorks() {
+  usePageTitle("How it works");
+  return (
+    <SiteLayout>
+      <Container size="form" className="space-y-7 pt-4 md:pt-8">
+        <PageHeader title="How it works" subtitle="A simple path from browsing to delivery, all in one account." />
+
+        <ol className="space-y-3">
+          {STEPS.map((step, index) => (
+            <li key={step.title}>
+              <Card className="flex items-start gap-4 p-4 md:p-5">
+                <span className={cn("grid size-12 shrink-0 place-items-center rounded-[14px]", toneSolid[step.tone])}>
+                  <step.icon className="size-6" aria-hidden />
+                </span>
+                <div className="min-w-0">
+                  <p className="text-footnote font-semibold uppercase tracking-wider text-label-2">Step {index + 1}</p>
+                  <h2 className="text-headline font-semibold">{step.title}</h2>
+                  <p className="mt-1 text-subhead text-label-2">{step.text}</p>
+                </div>
+              </Card>
+            </li>
+          ))}
+        </ol>
+
+        <Card className="p-6 text-center md:p-8">
+          <h2 className="text-title2 font-bold">Ready to start?</h2>
+          <p className="mt-1.5 text-body text-label-2">Browse the range or send us a quote request.</p>
+          <div className="mt-5 flex flex-col justify-center gap-3 sm:flex-row">
+            <ButtonLink href="/products" size="lg">
+              Browse products
+            </ButtonLink>
+            <ButtonLink href="/quote" variant="gray" size="lg">
+              Request a quote
+            </ButtonLink>
+          </div>
+        </Card>
+      </Container>
+    </SiteLayout>
+  );
+}

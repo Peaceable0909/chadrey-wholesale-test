@@ -1,3 +1,27 @@
-import { ArrowRight, Mail, MapPin, Phone } from "lucide-react";
-import { Link } from "wouter";
-export default function Contact(){return <div className="app-shell"><header className="site-header reference-header"><Link href="/" className="brand"><span className="brand-mountain">⌃</span><span>Chadrey<strong>Wholesale</strong></span></Link><nav className="main-nav"><Link href="/">Home</Link><Link href="/products">Products</Link><Link href="/quote">Request a Quote</Link><Link href="/how-it-works">How It Works</Link><Link href="/contact">Contact</Link></nav></header><main className="simple-public-page contact-page"><span className="eyebrow">LET’S TALK WHOLESALE</span><h1>Bring us your requirements.</h1><p className="page-lede">Whether you are sourcing a recurring range, preparing a custom product run, or need help with an existing quotation, our team can help you move forward.</p><div className="contact-grid"><div className="contact-card"><Mail size={22}/><h2>Email</h2><p>Send your requirements and our team will respond with the next step.</p><a href="mailto:hello@chadreywholesale.com">hello@chadreywholesale.com</a></div><div className="contact-card"><Phone size={22}/><h2>Request a callback</h2><p>Leave your number in a quote request and our team will call you back directly.</p><Link href="/quote" className="text-link">Start a quote request<ArrowRight size={15}/></Link></div><div className="contact-card"><MapPin size={22}/><h2>Service coverage</h2><p>Wholesale sourcing and fulfilment support for growing businesses. Email us your delivery location to confirm coverage and lead time.</p></div></div><Link href="/quote" className="button button-primary contact-button">Start a quote request</Link></main><footer className="reference-footer"><div className="footer-brand"><span className="brand-mountain">⌃</span><div><strong>Chadrey Wholesale</strong><small>Your trusted partner for wholesale success.</small></div></div><div className="footer-socials"><Link href="/contact" aria-label="Contact Chadrey on LinkedIn">in</Link><Link href="/contact" aria-label="Contact Chadrey on Facebook">f</Link><Link href="/contact" aria-label="Contact Chadrey on Instagram">◎</Link><Link href="/contact" aria-label="Email Chadrey">✉</Link></div><div className="footer-bottom"><span>© 2026 Chadrey Wholesale. All rights reserved.</span></div></footer></div>}
+import { ClipboardList, Globe, Mail } from "lucide-react";
+import { ButtonLink, ListGroup, ListRow, PageHeader } from "@/components/ios";
+import { Container } from "@/components/layout/Container";
+import { SiteLayout } from "@/components/layout/SiteLayout";
+import { usePageTitle } from "@/hooks/usePageTitle";
+import { siteConfig } from "@/lib/siteConfig";
+
+export default function Contact() {
+  usePageTitle("Contact us");
+  return (
+    <SiteLayout>
+      <Container size="form" className="space-y-7 pt-4 md:pt-8">
+        <PageHeader title="Contact us" subtitle="Tell us what you are sourcing. A real person replies with the next step." />
+
+        <ListGroup>
+          <ListRow href={`mailto:${siteConfig.supportEmail}`} icon={<Mail />} tone="blue" title="Email" subtitle={siteConfig.supportEmail} chevron />
+          <ListRow href="/quote" icon={<ClipboardList />} tone="orange" title="Request a callback" subtitle="Leave your number in a quote request and we will call you back" chevron />
+          <ListRow icon={<Globe />} tone="green" title="Coverage" subtitle={`We source from dealers in ${siteConfig.sourcingCountry}. Email us your delivery location to confirm coverage and lead time.`} />
+        </ListGroup>
+
+        <ButtonLink href="/quote" size="lg" full>
+          Start a quote request
+        </ButtonLink>
+      </Container>
+    </SiteLayout>
+  );
+}
