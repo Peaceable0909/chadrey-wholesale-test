@@ -292,3 +292,8 @@
 
 - [x] Fix slow loading after the redesign: no web-font stylesheet blocking the page, the page HTML down from 369 KB to 2 KB, product photos requested only when they are about to be seen, the home page asks for 8 products instead of 24, and each page's code loads when it is opened
 - [ ] Shrink the photos already uploaded (phone originals are several MB each): either turn on Supabase image transformations (Pro plan) or add an admin tool that resizes existing photos
+
+- [x] Add products from Telegram: send a photo with the details as its caption (name, wholesale, resell) to a private bot and a hidden draft is created; the resell range is only echoed back in the chat and never saved (`worker/`, `shared/productMessage.ts`, `docs/telegram-product-intake.md`)
+- [x] Add an approval screen to Admin > Products: a "waiting for your OK" banner, select many, Show in store, Hide, Category and Delete in bulk, with warnings for no category, price or photo
+- [ ] Set up the bot: create it in @BotFather, add the four secrets in Cloudflare, set the webhook and add your Telegram ID (step by step in `docs/telegram-product-intake.md`)
+- [ ] Later: update the price of an existing product from a Telegram message, and quantity breaks in one message ("10+ pcs 45,000")

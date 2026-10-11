@@ -74,6 +74,74 @@ export async function setProductActive(id: string, active: boolean): Promise<voi
   if (error) throw error;
 }
 
+/* Bulk changes: the same rules as above, applied to many products at once. */
+
+const chunk = <T>(items: T[], size: number): T[][] => {
+  const parts: T[][] = [];
+  for (let index = 0; index < items.length; index += size) parts.push(items.slice(index, index + size));
+  return parts;
+};
+
+export async function setProductsActive(ids: string[], active: boolean): Promise<void> {
+  for (const part of chunk(ids, 50)) {
+    const { error } = await getSupabaseClient().from("products").update({ is_active: active }).in("id", part);
+    if (error) throw error;
+  }
+}
+
+export async function setProductsCategory(ids: string[], category: string): Promise<void> {
+  for (const part of chunk(ids, 50)) {
+    const { error } = await getSupabaseClient().from("products").update({ category }).in("id", part);
+    if (error) throw error;
+  }
+}
+
+export type BulkDeleteResult = { deleted: number; blocked: number };
+
+/**
+ * Deletes products and their photos. A product that is part of a quote request cannot be deleted; those are
+ * left in place and counted in `blocked` so the rest still go.
+ */
+export async function deleteProductsBulk(ids: string[]): Promise<BulkDeleteResult> {
+  const client = getSupabaseClient();
+  let deleted = 0;
+  let blocked = 0;
+
+  for (const part of chunk(ids, 20)) {
+    const { data: files, error: filesError } = await client.from("product_images").select("product_id,storage_path").in("product_id", part);
+    if (filesError) throw filesError;
+    const pathsOf = (productIds: string[]) =>
+      (files ?? []).filter(file => productIds.includes(String(file.product_id))).map(file => String(file.storage_path)).filter(Boolean);
+    const removeFiles = async (paths: string[]) => {
+      // Leftover files are harmless; a failure here must not hide that the products are gone.
+      if (paths.length) await client.storage.from(BUCKET).remove(paths).catch(() => undefined);
+    };
+
+    const all = await client.from("products").delete().in("id", part);
+    if (!all.error) {
+      deleted += part.length;
+      await removeFiles(pathsOf(part));
+      continue;
+    }
+    if (!isStillReferencedError(all.error)) throw all.error;
+
+    // At least one of these is part of a quote request, which fails the whole statement. Go one by one.
+    for (const id of part) {
+      const one = await client.from("products").delete().eq("id", id);
+      if (one.error) {
+        if (isStillReferencedError(one.error)) {
+          blocked += 1;
+          continue;
+        }
+        throw one.error;
+      }
+      deleted += 1;
+      await removeFiles(pathsOf([id]));
+    }
+  }
+  return { deleted, blocked };
+}
+
 /**
  * Deletes the product (its photo records go with it), then the stored files.
  * The row goes first: a product that is part of a quote request cannot be deleted, and the photos
