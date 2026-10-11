@@ -33,7 +33,7 @@ class ErrorBoundary extends Component<Props, State> {
           <button
             type="button"
             onClick={() => window.location.reload()}
-            className="press mt-6 inline-flex h-[50px] items-center gap-2 rounded-[14px] bg-tint px-6 text-headline font-semibold text-white">
+            className="press mt-6 inline-flex h-[50px] items-center gap-2 rounded-[14px] bg-tint px-6 text-headline font-semibold text-on-tint">
             <RotateCcw className="size-5" aria-hidden />
             Reload page
           </button>

@@ -19,7 +19,7 @@ const STEPS: Array<{ icon: LucideIcon; tone: Tone; title: string; text: string }
   { icon: Search, tone: "blue", title: "Browse", text: "Find products with prices by quantity and clear minimum orders." },
   { icon: ClipboardList, tone: "orange", title: "Request a quote", text: "Tell us what you need. Prices move with import costs, so we confirm each one." },
   { icon: FileCheck2, tone: "indigo", title: "Review your quotation", text: "Accept the quotation when the numbers work for you." },
-  { icon: Truck, tone: "green", title: "Pay and track", text: "Pay securely, then follow your order until it arrives." },
+  { icon: Truck, tone: "teal", title: "Pay and track", text: "Pay securely, then follow your order until it arrives." },
 ];
 
 function HeroMosaic({ categories }: { categories: string[] }) {
@@ -43,9 +43,9 @@ function HeroMosaic({ categories }: { categories: string[] }) {
 
 function Hero({ categories }: { categories: string[] }) {
   return (
-    <section className="relative overflow-hidden rounded-[28px] bg-[linear-gradient(135deg,#0071e3_0%,#3b4fd6_55%,#5b3fc4_100%)] p-6 text-white md:p-12 lg:p-14">
+    <section className="relative overflow-hidden rounded-[28px] bg-[linear-gradient(135deg,#071c3b_0%,#0a2a55_62%,#123a73_100%)] p-6 text-white md:p-12 lg:p-14">
       <div className="pointer-events-none absolute -right-24 -top-24 size-80 rounded-full bg-white/10 blur-2xl" aria-hidden />
-      <div className="pointer-events-none absolute -bottom-32 left-1/3 size-72 rounded-full bg-[#6ec1ff]/20 blur-3xl" aria-hidden />
+      <div className="pointer-events-none absolute -bottom-32 left-1/3 size-72 rounded-full bg-[#ff7014]/20 blur-3xl" aria-hidden />
 
       <div className="relative grid items-center gap-8 md:grid-cols-[1.15fr_1fr]">
         <div>
@@ -56,11 +56,11 @@ function Hero({ categories }: { categories: string[] }) {
           <h1 className="mt-4 text-[2.125rem] font-bold leading-[1.08] tracking-tight md:text-[3.25rem]">Wholesale goods from Thai dealers.</h1>
           <p className="mt-3 max-w-md text-body text-white/85 md:text-[1.1875rem]">Browse the range, request a quote and we handle the import and delivery.</p>
           <div className="mt-6 flex flex-col gap-3 sm:flex-row">
-            <ButtonLink href="/products" variant="light" size="lg" full className="sm:w-auto sm:px-8">
-              Browse products
-            </ButtonLink>
-            <ButtonLink href="/quote" variant="glass" size="lg" full className="sm:w-auto sm:px-8">
+            <ButtonLink href="/quote" size="lg" full className="sm:w-auto sm:px-8">
               Request a quote
+            </ButtonLink>
+            <ButtonLink href="/products" variant="glass" size="lg" full className="sm:w-auto sm:px-8">
+              Browse products
             </ButtonLink>
           </div>
           <ul className="mt-7 hidden gap-x-6 gap-y-2 text-subhead text-white/85 md:flex md:flex-wrap">
@@ -157,7 +157,7 @@ export default function Home() {
         </section>
 
         <section aria-labelledby="how-heading">
-          <SectionHeader title={<span id="how-heading">How it works</span>} action={<Link href="/how-it-works" className="text-subhead text-tint-text">Learn more</Link>} />
+          <SectionHeader title={<span id="how-heading">How it works</span>} action={<Link href="/how-it-works" className="text-subhead text-tint-text">See how it works</Link>} />
           <ol className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-4 md:gap-4">
             {STEPS.map((step, index) => (
               <li key={step.title}>

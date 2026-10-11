@@ -79,10 +79,11 @@ function AdminProductRow({ product, active, selecting, picked, onOpen, onToggle,
     <li className={cn("row-separator flex items-center gap-3 px-4 py-3 [--sep-inset:84px] transition-colors", selecting && "[--sep-inset:120px]", picked && "bg-tint-soft")}>
       {selecting ? (
         <>
-          <button type="button" role="checkbox" aria-checked={picked} aria-label={`Select ${product.name}`} onClick={onToggle} className="press flex min-w-0 flex-1 items-center gap-3 text-left">
+          <button type="button" role="checkbox" aria-checked={picked} onClick={onToggle} className="press flex min-w-0 flex-1 items-center gap-3 text-left">
             <span aria-hidden className={cn("grid size-6 shrink-0 place-items-center rounded-full border-2 transition-colors", picked ? "border-tint bg-tint text-on-tint" : "border-separator-strong")}>
               {picked && <Check className="size-4" strokeWidth={3} />}
             </span>
+            <span className="sr-only">Select </span>
             {summary}
           </button>
           <Button variant="gray" size="icon-sm" onClick={onOpen} aria-label={`Edit ${product.name}`}>
@@ -91,7 +92,8 @@ function AdminProductRow({ product, active, selecting, picked, onOpen, onToggle,
         </>
       ) : (
         <>
-          <button type="button" onClick={onOpen} className="press flex min-w-0 flex-1 items-center gap-3 text-left" aria-label={`Edit ${product.name}`}>
+          <button type="button" onClick={onOpen} className="press flex min-w-0 flex-1 items-center gap-3 text-left">
+            <span className="sr-only">Edit </span>
             {summary}
           </button>
           <Switch checked={active} onCheckedChange={onActive} aria-label={`${product.name} is ${active ? "visible" : "hidden"} in the store`} />

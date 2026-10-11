@@ -37,17 +37,20 @@ function TopBar() {
   return (
     <header className="material hairline-b pt-safe sticky top-0 z-40">
       <Container className="flex h-[var(--nav-h)] items-center justify-between gap-4">
-        <Link href="/" aria-label={`${siteConfig.name} home`} className="press -ml-1 rounded-lg">
-          <Logo />
+        <Link href="/" aria-label={`${siteConfig.name} home`} className="press -ml-1 rounded-lg px-1 py-1">
+          <Logo className="h-7 md:h-8" />
         </Link>
 
-        <nav aria-label="Primary" className="hidden items-center gap-1 md:flex">
+        <nav aria-label="Primary" className="hidden h-full items-center gap-1 md:flex">
           {links.map(link => (
             <Link
               key={link.href}
               href={link.href}
               aria-current={link.active ? "page" : undefined}
-              className={cn("rounded-full px-3.5 py-1.5 text-subhead transition-colors", link.active ? "bg-fill-3 font-semibold text-label" : "text-label-2 hover:text-label")}>
+              className={cn(
+                "relative flex h-full items-center px-3.5 text-subhead transition-colors",
+                link.active ? "font-semibold text-label after:absolute after:inset-x-3.5 after:bottom-0 after:h-[3px] after:rounded-t-full after:bg-tint" : "text-label-2 hover:text-label",
+              )}>
               {link.label}
             </Link>
           ))}
@@ -61,7 +64,8 @@ function TopBar() {
             Request a quote
           </ButtonLink>
           {user ? (
-            <Link href={accountHref} aria-label="My account" className="press ml-0.5 rounded-full">
+            <Link href={accountHref} className="press ml-0.5 rounded-full">
+              <span className="sr-only">My account </span>
               <Avatar name={user.name} email={user.email} />
             </Link>
           ) : (
@@ -88,7 +92,8 @@ function TabBar() {
               <Link
                 href={tab.href}
                 aria-current={active ? "page" : undefined}
-                className={cn("press flex h-full flex-col items-center justify-center gap-0.5 text-caption2 font-medium", active ? "text-tint-text" : "text-label-2")}>
+                className={cn("press relative flex h-full flex-col items-center justify-center gap-0.5 text-caption2 font-medium", active ? "font-semibold text-label" : "text-label-2")}>
+                {active && <span aria-hidden className="absolute inset-x-6 top-0 h-[3px] rounded-b-full bg-tint" />}
                 <tab.icon className="size-6" strokeWidth={active ? 2.2 : 1.7} aria-hidden />
                 {tab.label}
               </Link>
@@ -103,11 +108,11 @@ function TabBar() {
 function FooterColumn({ title, links }: { title: string; links: Array<{ href: string; label: string }> }) {
   return (
     <div>
-      <h2 className="text-footnote font-semibold uppercase tracking-wider text-label-2">{title}</h2>
+      <h2 className="text-footnote font-semibold uppercase tracking-wider text-white/60">{title}</h2>
       <ul className="mt-3 space-y-2.5">
         {links.map(link => (
           <li key={link.href + link.label}>
-            <Link href={link.href} className="text-subhead text-label hover:text-tint-text">
+            <Link href={link.href} className="text-subhead text-white/85 transition-colors hover:text-white">
               {link.label}
             </Link>
           </li>
@@ -119,11 +124,11 @@ function FooterColumn({ title, links }: { title: string; links: Array<{ href: st
 
 function Footer() {
   return (
-    <footer className="mt-14 border-t border-separator bg-surface md:mt-20">
+    <footer className="mt-14 border-t border-white/10 bg-navy text-white md:mt-20">
       <Container className="grid grid-cols-2 gap-x-6 gap-y-9 py-10 md:grid-cols-[1.6fr_1fr_1fr_1fr] md:py-12">
         <div className="col-span-2 md:col-span-1">
-          <Logo />
-          <p className="mt-3 max-w-xs text-subhead text-label-2">
+          <Logo className="h-8 text-white" />
+          <p className="mt-4 max-w-xs text-subhead text-white/70">
             {siteConfig.tagline}. Browse the range, request a quote, and we handle the import.
           </p>
         </div>
@@ -151,7 +156,7 @@ function Footer() {
           ]}
         />
       </Container>
-      <div className="border-t border-separator py-4 text-center text-footnote text-label-2">
+      <div className="border-t border-white/10 py-4 text-center text-footnote text-white/60">
         © {new Date().getFullYear()} {siteConfig.name} · Sourced in {siteConfig.sourcingCountry}
       </div>
     </footer>
@@ -164,13 +169,15 @@ type SiteLayoutProps = {
   tabBar?: boolean;
   footer?: boolean;
   className?: string;
+  /** "white" gives a white page (the shop front, where products sit in bordered cards); the default is the soft grey that white cards sit on. */
+  background?: "canvas" | "white";
 };
 
 /** The shared public shell: translucent top bar, bottom tab bar on phones, footer. */
-export function SiteLayout({ children, tabBar = true, footer = true, className }: SiteLayoutProps) {
+export function SiteLayout({ children, tabBar = true, footer = true, className, background = "canvas" }: SiteLayoutProps) {
   return (
-    <div className={cn("min-h-dvh", tabBar && "pb-[calc(var(--tab-h)+env(safe-area-inset-bottom))] md:pb-0")}>
-      <a href="#main" className="sr-only z-50 rounded-full bg-surface px-4 py-2 text-subhead font-semibold focus:not-sr-only focus:fixed focus:left-4 focus:top-4">
+    <div className={cn("min-h-dvh", background === "white" && "bg-surface", tabBar && "pb-[calc(var(--tab-h)+env(safe-area-inset-bottom))] md:pb-0")}>
+      <a href="#main" className="sr-only z-50 rounded-control bg-surface px-4 py-2 text-subhead font-semibold focus:not-sr-only focus:fixed focus:left-4 focus:top-4">
         Skip to content
       </a>
       <TopBar />

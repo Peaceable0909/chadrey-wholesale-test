@@ -109,7 +109,7 @@ export function QuoteLineCard({ line, index, canRemove, onChange, onRemove, onCh
                     className={cn("press relative size-[68px] shrink-0 overflow-hidden rounded-[14px] bg-fill-4 transition-opacity", selected ? "ring-2 ring-tint ring-offset-2 ring-offset-surface" : "opacity-70")}>
                     <ProductImage product={product} index={position} variant="thumb" />
                     {selected && (
-                      <span className="absolute bottom-1 right-1 grid size-5 place-items-center rounded-full bg-tint text-white">
+                      <span className="absolute bottom-1 right-1 grid size-5 place-items-center rounded-full bg-tint text-on-tint">
                         <Check className="size-3" strokeWidth={3.5} />
                       </span>
                     )}

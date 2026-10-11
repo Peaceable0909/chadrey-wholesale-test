@@ -305,3 +305,15 @@ Move the shop from Supabase to Cloudflare (staged; see `docs/cloudflare-store.md
 - [ ] Switch on Stage 1: run the one line in `docs/cloudflare-store.md` in Supabase (lets quote requests refer to products that are only in Cloudflare), then press "Copy now"
 - [ ] Stage 2: customers' accounts and sign-in (an emailed sign-in link; Cloudflare Email Sending is in beta and needs the $5 Workers plan, or use a login service), quote requests, quotations, invoices, orders, messages and notifications on Cloudflare. The older quotation, invoice, order, message and fulfilment pages still call a retired numeric-id backend, so rebuild them directly on Cloudflare instead of on Supabase first
 - [ ] Stage 3: switch Supabase off. Remove `client/src/lib/legacyCopy.ts`, `LegacyCopyCard`, the `SUPABASE_*` settings, `supabase_*.sql`, and the Supabase checks in `worker/adminAuth.ts` (admins sign in through the new login instead)
+
+Chadrey brand redesign of the Products page (see `docs/brand-and-design.md`; replaces the earlier dark-green and blue looks)
+- [x] Use the real Chadrey colours across the site: orange `#FF7014` for actions and selections, deep navy `#071C3B` for text and structure, white pages and cards, soft grey `#F4F6F9`. Buttons have navy text on the orange because white on that orange fails the contrast rules
+- [x] Draw the Chadrey logo as a vector (top bar, footer, sign-in, browser icon, app icons) and use navy for the footer
+- [x] Redesign Products: clear header with a Request a Quote button, bordered search, category chips with counts, product count, sort, removable active filters, a 4 / 3 / 2 column grid, cards with category, name, options, price, MOQ and a Request quote button, and a two-column quick view
+- [x] Make Quick view work on phones (it only appeared when hovering on a desktop) and keep every card action visible without hover
+- [x] Photos keep their shape (about-square photos fill the frame, others are shown whole), fade in, and show "No photo yet" or "Photo unavailable" instead of a broken picture
+- [x] Better empty search, empty category, error with retry, loading skeletons that match the cards, and a "Showing 24 of 120" Show more button
+- [x] Accessibility: axe finds no WCAG A/AA problems on 52 page and screen combinations; Lighthouse accessibility 100, best practices 100, SEO 100 on Products (added `robots.txt`)
+- [ ] If you have the logo as an SVG or PDF, swap it in `client/src/components/ios/Logo.tsx` (the current vector was redrawn by eye from the picture)
+- [ ] Phone speed (Lighthouse performance about 89 on a throttled phone, 100 on desktop): the main script is about 790 KB; splitting out the rarely needed libraries would raise it
+

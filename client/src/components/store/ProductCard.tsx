@@ -1,9 +1,10 @@
 import { Eye, Heart } from "lucide-react";
 import { Link } from "wouter";
-import { Badge, Skeleton } from "@/components/ios";
+import { ButtonLink, Skeleton } from "@/components/ios";
 import type { Product } from "@/lib/catalogue";
+import { variationSummary } from "@/lib/catalogueView";
 import { formatMoney } from "@/lib/format";
-import { productHref } from "@/lib/productRoute";
+import { productHref, quoteHref } from "@/lib/productRoute";
 import { cn } from "@/lib/utils";
 import { entryPrice, MoqLabel, PriceLabel } from "./Price";
 import { ProductImage } from "./ProductImage";
@@ -20,95 +21,114 @@ type ProductCardProps = {
   product: Product;
   saved?: boolean;
   onToggleSave?: () => void;
-  /** Desktop only: a hover shortcut that previews the product without leaving the list. */
+  /** Opens a preview of the product without leaving the list. Always visible, so it works on a phone too. */
   onQuickView?: () => void;
   priority?: boolean;
   /** How far outside the screen the photo may be before it loads; rails pass "0px" so only visible cards fetch photos. */
   imageMargin?: string;
+  /** The product name's heading level, so headings never skip a level: h2 under the page title, h3 under a section title. */
+  headingLevel?: "h2" | "h3";
   className?: string;
 };
 
+/** The round white buttons that sit on a product photo. 40px wide, so a thumb can hit them. */
+const photoButton =
+  "press absolute z-20 grid size-10 place-items-center rounded-full bg-surface/95 text-label shadow-sm ring-1 ring-separator transition-colors hover:bg-surface";
+
 /**
- * Marketplace product tile: photo, name, price at the minimum order and the MOQ.
- * The whole card is one link (a stretched anchor), so the heart and quick view buttons stay separate targets.
+ * Marketplace product tile: photo, category, name, price at the minimum order, the MOQ and one clear action.
+ * The whole card is one link (a stretched anchor); the heart, quick view and quote buttons are separate targets above it.
+ * Nothing important appears only on hover, so every action is there on a phone.
  */
-export function ProductCard({ product, saved = false, onToggleSave, onQuickView, priority, imageMargin, className }: ProductCardProps) {
+export function ProductCard({ product, saved = false, onToggleSave, onQuickView, priority, imageMargin, headingLevel: Heading = "h3", className }: ProductCardProps) {
   const price = entryPrice(product.pricing);
   const label = `${product.name}${price !== null ? `, ${formatMoney(price, product.pricing.currency)} per ${product.pricing.unit}` : ", price on request"}`;
+  const variations = variationSummary(product.optionGroups);
 
   return (
     <article
       className={cn(
-        "group relative flex flex-col overflow-hidden rounded-card bg-surface shadow-card transition-[transform,box-shadow] duration-200 active:scale-[0.985] md:hover:-translate-y-0.5 md:hover:shadow-float",
+        "group relative flex h-full flex-col overflow-hidden rounded-tile border border-separator bg-surface transition-[border-color,box-shadow] duration-200 hover:border-separator-strong hover:shadow-card",
+        // The stretched link is clipped by the card's rounded edge, so its focus ring is drawn around the whole card instead.
+        "has-[>a:focus-visible]:ring-2 has-[>a:focus-visible]:ring-[var(--focus-ring)] has-[>a:focus-visible]:ring-offset-2 has-[>a:focus-visible]:ring-offset-[var(--surface)]",
         className,
       )}>
-      <Link href={productHref(product.slug)} aria-label={label} className="absolute inset-0 z-10 rounded-card" />
+      <Link href={productHref(product.slug)} aria-label={label} className="absolute inset-0 z-10 rounded-tile outline-none" />
 
       <div className="relative aspect-square overflow-hidden bg-fill-4">
-        <ProductImage product={product} priority={priority} margin={imageMargin} className="transition-transform duration-500 md:group-hover:scale-[1.04]" />
-        <div className="absolute left-2.5 top-2.5 flex gap-1.5">
-          {product.isSample ? (
-            <Badge tone="gray" className="bg-surface/90 backdrop-blur">
-              Sample
-            </Badge>
-          ) : isNew(product) ? (
-            <Badge tone="green" className="bg-surface/90 backdrop-blur">
-              New
-            </Badge>
-          ) : null}
-        </div>
+        <ProductImage product={product} fit="auto" fade caption priority={priority} margin={imageMargin} className="transition-transform duration-500 md:group-hover:scale-[1.03]" />
+        {(product.isSample || isNew(product)) && (
+          <span
+            className={cn(
+              "absolute left-2.5 top-2.5 inline-flex h-6 items-center rounded-md px-2 text-caption font-semibold",
+              product.isSample ? "bg-surface/95 text-label-2 ring-1 ring-separator" : "bg-tint text-on-tint",
+            )}>
+            {product.isSample ? "Sample" : "New"}
+          </span>
+        )}
         {onToggleSave && (
-          <button
-            type="button"
-            aria-label={saved ? `Remove ${product.name} from saved` : `Save ${product.name}`}
-            aria-pressed={saved}
-            onClick={onToggleSave}
-            className="material press absolute right-2 top-2 z-20 grid size-9 place-items-center rounded-full">
-            <Heart className={cn("size-[18px] transition-colors", saved ? "fill-ios-red text-ios-red" : "text-label")} strokeWidth={2} />
+          <button type="button" aria-label={saved ? `Remove ${product.name} from saved` : `Save ${product.name}`} aria-pressed={saved} onClick={onToggleSave} className={cn(photoButton, "right-2 top-2")}>
+            <Heart className={cn("size-5 transition-colors", saved ? "fill-tint" : "fill-transparent")} strokeWidth={2} aria-hidden />
           </button>
         )}
         {onQuickView && (
-          <button
-            type="button"
-            onClick={onQuickView}
-            className="material absolute inset-x-3 bottom-3 z-20 hidden h-9 translate-y-1 items-center justify-center gap-1.5 rounded-full text-subhead font-semibold opacity-0 transition-all focus-visible:translate-y-0 focus-visible:opacity-100 group-hover:translate-y-0 group-hover:opacity-100 md:flex">
-            <Eye className="size-4" aria-hidden />
-            Quick view
+          <button type="button" aria-label={`Quick view: ${product.name}`} title="Quick view" onClick={onQuickView} className={cn(photoButton, "bottom-2 right-2")}>
+            <Eye className="size-5" strokeWidth={2} aria-hidden />
           </button>
         )}
       </div>
 
-      <div className="flex flex-1 flex-col p-3 sm:p-3.5">
-        <p className="truncate text-caption font-medium text-label-2">{product.category}</p>
-        <h3 className="mt-0.5 line-clamp-2 min-h-[2.75em] text-subhead font-semibold leading-snug">{product.name}</h3>
-        <div className="mt-auto flex flex-col gap-0.5 pt-2">
+      <div className="flex flex-1 flex-col p-3 sm:p-4">
+        <p className="truncate text-caption font-semibold uppercase tracking-wide text-label-2">{product.category}</p>
+        <Heading className="mt-1 line-clamp-2 text-subhead font-semibold leading-snug text-label">{product.name}</Heading>
+        {variations && <p className="mt-1 truncate text-caption text-label-2">{variations}</p>}
+
+        <div className="mt-auto flex flex-col gap-0.5 pt-3">
           <PriceLabel pricing={product.pricing} />
           <MoqLabel moq={product.moq} unit={product.pricing.unit} />
+        </div>
+
+        <div className="relative z-20 mt-3">
+          {product.isSample ? (
+            <ButtonLink href={productHref(product.slug)} variant="outline" size="sm" full>
+              View details
+            </ButtonLink>
+          ) : (
+            <ButtonLink href={quoteHref(product.slug)} size="sm" full aria-label={`Request quote for ${product.name}`}>
+              Request quote
+            </ButtonLink>
+          )}
         </div>
       </div>
     </article>
   );
 }
 
+/** Same shape as a real card, so the page does not jump when products arrive. */
 export function ProductCardSkeleton() {
   return (
-    <div aria-hidden className="overflow-hidden rounded-card bg-surface shadow-card">
+    <div aria-hidden className="flex h-full flex-col overflow-hidden rounded-tile border border-separator bg-surface">
       <Skeleton className="aspect-square rounded-none" />
-      <div className="space-y-2.5 p-3.5">
+      <div className="flex flex-1 flex-col p-3 sm:p-4">
         <Skeleton className="h-3 w-1/3" />
-        <Skeleton className="h-4 w-11/12" />
-        <Skeleton className="h-4 w-2/3" />
-        <Skeleton className="mt-3 h-5 w-1/2" />
+        <Skeleton className="mt-2 h-4 w-11/12" />
+        <Skeleton className="mt-1.5 h-4 w-2/3" />
+        <div className="mt-auto pt-4">
+          <Skeleton className="h-6 w-1/2" />
+          <Skeleton className="mt-1.5 h-3.5 w-1/3" />
+        </div>
+        <Skeleton className="mt-3 h-9 w-full rounded-control" />
       </div>
     </div>
   );
 }
 
-const GRID = "grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4";
+/** Two columns on phones (one on the very narrowest), three on tablets, four on desktop. */
+const GRID = "grid grid-cols-1 gap-3 min-[340px]:grid-cols-2 sm:grid-cols-3 sm:gap-4 lg:gap-5";
 
-/** Responsive product grid: 2 columns on phones, more as the screen grows. */
+/** Responsive product grid. `wide` is the main catalogue (four columns on desktop); otherwise a narrower three. */
 export function ProductGrid({ children, className, wide = false }: { children: React.ReactNode; className?: string; wide?: boolean }) {
-  return <div className={cn(GRID, wide ? "lg:grid-cols-4 xl:grid-cols-5" : "lg:grid-cols-3 xl:grid-cols-4", className)}>{children}</div>;
+  return <div className={cn(GRID, wide ? "lg:grid-cols-4" : "lg:grid-cols-3 xl:grid-cols-4", className)}>{children}</div>;
 }
 
 export function ProductGridSkeleton({ count = 8, wide = false }: { count?: number; wide?: boolean }) {

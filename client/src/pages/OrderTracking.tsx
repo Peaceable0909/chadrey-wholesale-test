@@ -61,7 +61,7 @@ export default function OrderTracking() {
               return (
                 <li key={step} className="relative flex gap-4 pb-7 last:pb-0">
                   {index < steps.length - 1 && <span aria-hidden className={cn("absolute left-[17px] top-9 bottom-0 w-0.5", done ? "bg-tint" : "bg-separator")} />}
-                  <span className={cn("z-10 grid size-9 shrink-0 place-items-center rounded-full text-subhead font-semibold", done || active ? "bg-tint text-white" : "bg-fill-3 text-label-2")}>
+                  <span className={cn("z-10 grid size-9 shrink-0 place-items-center rounded-full text-subhead font-semibold", done || active ? "bg-tint text-on-tint" : "bg-fill-3 text-label-2")}>
                     {done ? <Check className="size-[18px]" strokeWidth={3} aria-hidden /> : index + 1}
                   </span>
                   <div className="pt-1">

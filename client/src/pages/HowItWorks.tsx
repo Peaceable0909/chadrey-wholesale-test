@@ -11,7 +11,7 @@ const STEPS: Array<{ icon: LucideIcon; tone: Tone; title: string; text: string }
   { icon: Search, tone: "blue", title: "Browse products", text: `Explore goods from dealers in ${siteConfig.sourcingCountry}, with minimum orders, prices by quantity and options.` },
   { icon: ClipboardList, tone: "orange", title: "Request a quote", text: "Pick your products and quantities, then tell us anything specific about sizes, branding or timing." },
   { icon: FileCheck2, tone: "indigo", title: "Review your quotation", text: "Import prices move with exchange rates and freight, so we confirm each price and send a clear quotation." },
-  { icon: CreditCard, tone: "green", title: "Confirm and pay", text: "Accept the quotation and pay securely. Your quote, invoice and payment stay together in your account." },
+  { icon: CreditCard, tone: "purple", title: "Confirm and pay", text: "Accept the quotation and pay securely. Your quote, invoice and payment stay together in your account." },
   { icon: Truck, tone: "teal", title: "Track delivery", text: "Follow your order from production and shipping through to delivery." },
 ];
 

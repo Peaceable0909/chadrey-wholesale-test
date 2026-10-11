@@ -1,6 +1,6 @@
 import * as React from "react";
 import { Link } from "wouter";
-import { LogoMark } from "@/components/ios";
+import { Logo } from "@/components/ios";
 import { Container } from "@/components/layout/Container";
 import { cn } from "@/lib/utils";
 
@@ -30,7 +30,7 @@ export function AuthShell({ title, description, badge, children }: AuthShellProp
       <div className="mx-auto w-full max-w-[420px]">
         <div className="flex flex-col items-center text-center">
           <Link href="/" aria-label="Back to the store" className="press">
-            <LogoMark className="size-16 drop-shadow-[0_6px_14px_rgba(0,80,200,0.35)]" />
+            <Logo className="h-12 md:h-14" />
           </Link>
           {badge && <div className="mt-4">{badge}</div>}
           <h1 className="mt-4 text-title1 font-bold">{title}</h1>

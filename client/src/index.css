@@ -5,7 +5,7 @@
 @source "./**/*.{ts,tsx}";
 
 /* ==========================================================================
-   Chadrey design system — iOS-inspired
+   Chadrey design system — orange and deep navy, with iOS-style structure
    --------------------------------------------------------------------------
    1. Tokens          raw CSS variables (light + dark). Change the look here.
    2. Tailwind theme  exposes the tokens as utilities (bg-surface, text-label…)
@@ -19,65 +19,78 @@
 :root {
   color-scheme: light;
 
-  /* Surfaces (iOS "grouped" hierarchy: grey canvas, white cards) */
-  --canvas: #f2f2f7;
+  /* Brand. Orange (from the logo) marks actions and selections; deep navy carries text and structure.
+     White text on this orange is only 2.8:1, so text that sits on orange is navy (6.1:1). */
+  --brand-orange: #ff7014;
+  --brand-orange-pressed: #e85f05;
+  --brand-orange-deep: #ad4100; /* orange for small text and links: 5.9:1 on white, 5.5:1 on soft grey, 4.8:1 on an orange wash */
+  --brand-orange-wash: rgba(255, 112, 20, 0.12);
+  --brand-navy: #071c3b;
+  --on-brand-orange: #071c3b;
+
+  /* Surfaces: white pages and cards, soft grey for the canvas behind grouped lists and for quiet fills */
+  --canvas: #f4f6f9;
   --surface: #ffffff;
   --surface-raised: #ffffff;
-  --fill-1: rgba(120, 120, 128, 0.2);
-  --fill-2: rgba(120, 120, 128, 0.16);
-  --fill-3: rgba(118, 118, 128, 0.12);
-  --fill-4: rgba(116, 116, 128, 0.08);
+  --fill-1: rgba(7, 28, 59, 0.2);
+  --fill-2: rgba(7, 28, 59, 0.12);
+  --fill-3: rgba(7, 28, 59, 0.07);
+  --fill-4: rgba(7, 28, 59, 0.045);
 
-  /* Text — secondary grey is darker than Apple's stock value so it passes WCAG AA */
-  --label: #1d1d1f;
-  --label-2: #6c6c70;
-  --label-3: #8e8e93;
+  /* Text: navy for headings and key text, a muted slate for secondary text (5.9:1 on white, 5.5:1 on soft grey) */
+  --label: #071c3b;
+  --label-2: #586579;
+  --label-3: #8793a5;
 
-  /* Lines */
-  --separator: rgba(60, 60, 67, 0.22);
-  --separator-strong: rgba(60, 60, 67, 0.36);
+  /* Lines: subtle borders for cards and dividers; a stronger one where a control needs a visible edge (3.1:1) */
+  --separator: #dde3ec;
+  --separator-strong: #b8c1d0;
+  --control-border: #8793a5;
+  --focus-ring: #071c3b;
 
-  /* Accent. The fill is Apple's web blue (white text = 4.7:1); links use a deeper blue */
-  --tint: #0071e3;
-  --tint-pressed: #0062c4;
-  --tint-text: #0066cc;
-  --tint-soft: rgba(0, 113, 227, 0.12);
+  /* Accent = brand orange. Fills use the orange itself; links and small text use the deeper orange. */
+  --tint: #ff7014;
+  --tint-pressed: #e85f05;
+  --tint-text: #ad4100;
+  --tint-soft: rgba(255, 112, 20, 0.12);
+  --on-tint: #071c3b;
 
-  /* System colours: base value for icons/fills, -text value for small text on tinted chips */
-  --blue: #0071e3;
-  --blue-text: #005cb8;
-  --green: #34c759;
-  --green-text: #1e7133;
-  --orange: #ff9500;
-  --orange-text: #915500;
-  --red: #ff3b30;
+  /* System colours: base value for icons/fills, -text value for small text on tinted chips.
+     Blue is the brand navy, so information reads as part of the brand rather than as iOS blue. */
+  --blue: #071c3b;
+  --blue-text: #071c3b;
+  --green: #2f9e57;
+  --green-text: #1e6b3a;
+  --orange: #ff7014;
+  --orange-text: #ad4100;
+  --red: #e5483d;
   --red-text: #b32922;
   --red-solid: #d70015;
-  --indigo: #5856d6;
-  --indigo-text: #504ec3;
-  --teal: #30b0c7;
-  --teal-text: #1d6b79;
-  --pink: #ff2d55;
-  --pink-text: #b5203c;
-  --purple: #af52de;
-  --purple-text: #853ea9;
-  --yellow: #ffcc00;
-  --yellow-text: #7d6400;
-  --gray: #8e8e93;
-  --gray-text: #616164;
+  --indigo: #1b3f7a;
+  --indigo-text: #1b3f7a;
+  --teal: #3a6ea5;
+  --teal-text: #25507f;
+  --pink: #d6513a;
+  --pink-text: #a63a28;
+  --purple: #4a5d82;
+  --purple-text: #3d4f73;
+  --yellow: #f2b01e;
+  --yellow-text: #7d5a00;
+  --gray: #8793a5;
+  --gray-text: #586579;
 
   /* Materials */
-  --material: rgba(250, 250, 252, 0.78);
-  --material-border: rgba(60, 60, 67, 0.16);
-  --overlay: rgba(0, 0, 0, 0.4);
+  --material: rgba(255, 255, 255, 0.9);
+  --material-border: #dde3ec;
+  --overlay: rgba(7, 28, 59, 0.5);
 
-  /* Elevation */
-  --elev-card: 0 1px 2px rgba(0, 0, 0, 0.04), 0 6px 20px rgba(0, 0, 0, 0.05);
-  --elev-float: 0 10px 34px rgba(0, 0, 0, 0.16);
-  --elev-sheet: 0 -10px 50px rgba(0, 0, 0, 0.18);
+  /* Elevation: restrained. Cards rely on a fine border; shadows are for things that float. */
+  --elev-card: 0 1px 2px rgba(7, 28, 59, 0.04);
+  --elev-float: 0 10px 30px rgba(7, 28, 59, 0.16);
+  --elev-sheet: 0 -10px 50px rgba(7, 28, 59, 0.2);
 
   /* Layout */
-  --nav-h: 52px;
+  --nav-h: 56px;
   --tab-h: 50px;
   --gutter: 1rem;
 }
@@ -85,6 +98,12 @@
 @media (min-width: 40rem) {
   :root {
     --gutter: 1.5rem;
+  }
+}
+
+@media (min-width: 48rem) {
+  :root {
+    --nav-h: 64px;
   }
 }
 
@@ -98,53 +117,59 @@
   :root {
     color-scheme: dark;
 
-    --canvas: #000000;
-    --surface: #1c1c1e;
-    --surface-raised: #2c2c2e;
-    --fill-1: rgba(120, 120, 128, 0.36);
-    --fill-2: rgba(120, 120, 128, 0.32);
-    --fill-3: rgba(118, 118, 128, 0.24);
-    --fill-4: rgba(118, 118, 128, 0.18);
+    --brand-orange-deep: #ff9455;
+    --brand-orange-wash: rgba(255, 112, 20, 0.2);
 
-    --label: #f5f5f7;
-    --label-2: #98989f;
-    --label-3: #636366;
+    --canvas: #07172e;
+    --surface: #0c2142;
+    --surface-raised: #112a52;
+    --fill-1: rgba(244, 246, 249, 0.3);
+    --fill-2: rgba(244, 246, 249, 0.2);
+    --fill-3: rgba(244, 246, 249, 0.12);
+    --fill-4: rgba(244, 246, 249, 0.08);
 
-    --separator: rgba(84, 84, 88, 0.65);
-    --separator-strong: rgba(120, 120, 128, 0.6);
+    --label: #f4f6f9;
+    --label-2: #a9b4c6;
+    --label-3: #8e9ab0;
 
-    --tint: #0071e3;
-    --tint-pressed: #2b8bf0;
-    --tint-text: #2997ff;
-    --tint-soft: rgba(41, 151, 255, 0.2);
+    --separator: rgba(244, 246, 249, 0.14);
+    --separator-strong: rgba(244, 246, 249, 0.3);
+    --control-border: #8e9ab0;
+    --focus-ring: #ff9455;
 
-    --blue: #0a84ff;
-    --blue-text: #409cff;
-    --green: #30d158;
-    --green-text: #30d158;
-    --orange: #ff9f0a;
-    --orange-text: #ff9f0a;
-    --red: #ff453a;
-    --red-text: #ff6961;
+    --tint: #ff7014;
+    --tint-pressed: #ff8a3d;
+    --tint-text: #ff9455;
+    --tint-soft: rgba(255, 112, 20, 0.2);
+    --on-tint: #071c3b;
+
+    --blue: #9db4d8;
+    --blue-text: #b6c8e4;
+    --green: #3ec06d;
+    --green-text: #5fd48a;
+    --orange: #ff7014;
+    --orange-text: #ff9455;
+    --red: #ff5a50;
+    --red-text: #ff7d75;
     --red-solid: #d70015;
-    --indigo: #5e5ce6;
-    --indigo-text: #8e8cff;
-    --teal: #40c8e0;
-    --teal-text: #40c8e0;
-    --pink: #ff375f;
-    --pink-text: #ff6482;
-    --purple: #bf5af2;
-    --purple-text: #cf80f5;
-    --yellow: #ffd60a;
-    --yellow-text: #ffd60a;
-    --gray: #8e8e93;
-    --gray-text: #a1a1a6;
+    --indigo: #8aa3d6;
+    --indigo-text: #a5b9e3;
+    --teal: #7fb0e0;
+    --teal-text: #9cc4ec;
+    --pink: #ff8a6f;
+    --pink-text: #ffa68f;
+    --purple: #a6b3d0;
+    --purple-text: #bcc6dd;
+    --yellow: #ffc83d;
+    --yellow-text: #ffd66b;
+    --gray: #8e9ab0;
+    --gray-text: #a9b4c6;
 
-    --material: rgba(28, 28, 30, 0.72);
-    --material-border: rgba(84, 84, 88, 0.5);
-    --overlay: rgba(0, 0, 0, 0.6);
+    --material: rgba(12, 33, 66, 0.9);
+    --material-border: rgba(244, 246, 249, 0.14);
+    --overlay: rgba(2, 8, 18, 0.65);
 
-    --elev-card: 0 0 0 0.5px rgba(255, 255, 255, 0.06);
+    --elev-card: 0 0 0 0.5px rgba(244, 246, 249, 0.08);
     --elev-float: 0 10px 34px rgba(0, 0, 0, 0.6);
     --elev-sheet: 0 -10px 50px rgba(0, 0, 0, 0.6);
   }
@@ -156,6 +181,13 @@
   --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Inter", system-ui, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif;
   --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 
+  --color-navy: var(--brand-navy);
+  --color-brand: var(--brand-orange);
+  --color-brand-pressed: var(--brand-orange-pressed);
+  --color-brand-deep: var(--brand-orange-deep);
+  --color-brand-wash: var(--brand-orange-wash);
+  --color-on-tint: var(--on-tint);
+  --color-control: var(--control-border);
   --color-canvas: var(--canvas);
   --color-surface: var(--surface);
   --color-raised: var(--surface-raised);
@@ -203,7 +235,7 @@
   --color-popover: var(--surface-raised);
   --color-popover-foreground: var(--label);
   --color-primary: var(--tint);
-  --color-primary-foreground: #ffffff;
+  --color-primary-foreground: var(--on-tint);
   --color-secondary: var(--fill-3);
   --color-secondary-foreground: var(--label);
   --color-muted: var(--fill-3);
@@ -214,7 +246,7 @@
   --color-destructive-foreground: #ffffff;
   --color-border: var(--separator);
   --color-input: var(--fill-3);
-  --color-ring: var(--tint);
+  --color-ring: var(--focus-ring);
 
   --shadow-card: var(--elev-card);
   --shadow-float: var(--elev-float);
@@ -256,10 +288,12 @@
   --text-caption2--line-height: 1.18;
   --text-caption2--letter-spacing: 0.005em;
 
-  --radius-control: 12px;
-  --radius-group: 16px;
-  --radius-card: 20px;
-  --radius-sheet: 28px;
+  /* Restrained corners: controls 10, product tiles 12, cards and groups 14, sheets 20 */
+  --radius-control: 10px;
+  --radius-tile: 12px;
+  --radius-group: 14px;
+  --radius-card: 14px;
+  --radius-sheet: 20px;
 
   --breakpoint-xs: 26rem;
 }
@@ -344,8 +378,9 @@
     opacity: 1;
   }
 
+  /* Navy on white, light orange on dark: always at least 3:1 against the page, unlike orange itself */
   :focus-visible {
-    outline: 3px solid color-mix(in srgb, var(--tint) 55%, transparent);
+    outline: 2px solid var(--focus-ring);
     outline-offset: 2px;
   }
 
