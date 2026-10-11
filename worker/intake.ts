@@ -123,7 +123,7 @@ async function createDraft(ctx: Context, supabase: SupabaseApi, image: Incoming,
   let pricingSaved = true;
 
   if (!existing) {
-    const description = describeParsed(parsed, currency);
+    const description = describeParsed(parsed);
     const row: Record<string, unknown> = { id: productId, slug, name: parsed.name, description, category, moq, is_active: false };
     const withPrice: Record<string, unknown> =
       parsed.wholesale === null ? row : { ...row, price_currency: currency, price_unit: unit, price_tiers: [{ min_qty: moq, price: parsed.wholesale }] };
@@ -167,7 +167,7 @@ async function createDraft(ctx: Context, supabase: SupabaseApi, image: Incoming,
       ? `${formatAmount(parsed.wholesale, currency)} per ${unit} · minimum order ${moq}${pricingSaved ? "" : " (price not saved, see below)"}`
       : `No price yet · minimum order ${moq}`,
   );
-  if (parsed.resellLow !== null) lines.push(`Suggested resale: ${formatResellRange(parsed.resellLow, parsed.resellHigh ?? parsed.resellLow, currency)}`);
+  if (parsed.resellLow !== null) lines.push(`Resell range: ${formatResellRange(parsed.resellLow, parsed.resellHigh ?? parsed.resellLow, currency)} (not saved on the product)`);
   lines.push(`Category: ${category}${typedCategory ? "" : guess ? ` (guessed from “${guess.similarTo}”)` : " (set it in admin)"}`);
   for (const warning of parsed.warnings) lines.push(`⚠️ ${warning}`);
   if (same) lines.push(`ℹ️ You already have “${same.name}” (${same.is_active ? "live" : "hidden"}).`);

@@ -30,8 +30,13 @@ describe("a photo with the details as its caption", () => {
       price_currency: "NGN",
       price_unit: "pc",
       price_tiers: [{ min_qty: 1, price: 48000 }],
-      description: "Suggested resale price: ₦55,000 – ₦60,000",
+      description: "",
     });
+  });
+
+  it("does not save the resell range on the product", async () => {
+    await run(photoUpdate(backend, { id: 9, caption: EXAMPLE_CAPTION }));
+    expect(JSON.stringify(products()[0])).not.toMatch(/55,?000|60,?000|resale|resell/i);
   });
 
   it("stores the biggest version of the photo and marks it as the main photo", async () => {
@@ -61,7 +66,7 @@ describe("a photo with the details as its caption", () => {
     expect(text).toContain("✅ Saved as a hidden draft");
     expect(text).toContain("100ml Original sugar marshmallow");
     expect(text).toContain("₦48,000 per pc · minimum order 1");
-    expect(text).toContain("Suggested resale: ₦55,000 – ₦60,000");
+    expect(text).toContain("Resell range: ₦55,000 – ₦60,000 (not saved on the product)");
     expect(text).toContain("Category: Uncategorised (set it in admin)");
     expect(text).toContain("Review it: https://shop.test/admin/products?status=hidden");
     expect(text).toContain(`Draft ID: ${products()[0].id}`);
@@ -282,7 +287,7 @@ describe("when the database is not ready", () => {
     expect(products()).toHaveLength(1);
     const product = products()[0];
     expect("price_tiers" in product).toBe(false);
-    expect(product.description).toBe("Wholesale price: ₦48,000 per pc\nSuggested resale price: ₦55,000 – ₦60,000");
+    expect(product.description).toBe("Wholesale price: ₦48,000 per pc");
     expect(lastReply()).toContain("(price not saved, see below)");
     expect(lastReply()).toContain("supabase_product_pricing.sql");
     expect(backend.state.images).toHaveLength(1);

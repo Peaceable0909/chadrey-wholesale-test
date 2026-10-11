@@ -283,9 +283,10 @@ describe("money text", () => {
     expect(formatResellRange(55000, 55000, "NGN")).toBe("₦55,000");
   });
 
-  it("builds the description from notes and the suggested resale price", () => {
+  it("builds the description from the extra lines only, never from the resell range", () => {
     const parsed = parseProductMessage("Body mist\nColors: pink, white\n48,000 wholesale\n55,000-60,000 resell");
-    expect(describeParsed(parsed, "NGN")).toBe("Colors: pink, white\nSuggested resale price: ₦55,000 – ₦60,000");
-    expect(describeParsed(parseProductMessage("Body mist\n48,000 wholesale"), "NGN")).toBe("");
+    expect(parsed.resellLow).toBe(55000);
+    expect(describeParsed(parsed)).toBe("Colors: pink, white");
+    expect(describeParsed(parseProductMessage("Body mist\n48,000 wholesale\n55,000-60,000 resell"))).toBe("");
   });
 });

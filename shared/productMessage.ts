@@ -15,7 +15,7 @@ export type ParsedProductMessage = {
   name: string;
   /** Price per unit at the minimum order. */
   wholesale: number | null;
-  /** Suggested resale price. A single price has low and high equal. */
+  /** Resell price range, read but never saved on the product. A single price has low and high equal. */
   resellLow: number | null;
   resellHigh: number | null;
   moq: number | null;
@@ -336,9 +336,10 @@ export function formatResellRange(low: number, high: number, currency: string): 
   return low === high ? formatAmount(low, currency) : `${formatAmount(low, currency)} – ${formatAmount(high, currency)}`;
 }
 
-/** Description text for the product page: the extra lines, then the suggested resale price. */
-export function describeParsed(parsed: ParsedProductMessage, currency: string): string {
-  const lines = [...parsed.notes];
-  if (parsed.resellLow !== null) lines.push(`Suggested resale price: ${formatResellRange(parsed.resellLow, parsed.resellHigh ?? parsed.resellLow, currency)}`);
-  return lines.join("\n");
+/**
+ * Description text for the product page: the extra lines of the message. The resell range is deliberately left out:
+ * the shop owner chose not to show it to buyers, so it is only echoed back in the chat reply.
+ */
+export function describeParsed(parsed: ParsedProductMessage): string {
+  return parsed.notes.join("\n");
 }

@@ -15,7 +15,7 @@ The bot answers with what it understood, for example:
 ✅ Saved as a hidden draft
 100ml Original sugar marshmallow
 ₦48,000 per pc · minimum order 1
-Suggested resale: ₦55,000 – ₦60,000
+Resell range: ₦55,000 – ₦60,000 (not saved on the product)
 Category: Uncategorised (set it in admin)
 
 Review it: https://…/admin/products?status=hidden
@@ -80,7 +80,7 @@ says how many products are waiting for your OK.
   `48,000 wholesale`, `Wholesale: ₦48,000`, `48k wholesale`, `#48,000` or `N48,000` (naira), `฿450`, `$12.50`.
   Thai labels work too: `ราคาส่ง` (wholesale), `ราคาปลีก` (retail).
 * **Wholesale** becomes the price on the site, at the minimum order.
-  **Resell** is kept in the description as "Suggested resale price", so buyers see what they can sell it for.
+  **Resell** is only echoed back in the bot's reply. It is not saved on the product, so buyers never see it.
 * Optional extra lines: `MOQ 24`, `per carton` after a price, `#perfume` or `Category: Perfume`,
   and anything else (for example `Colors: pink, white`) goes into the description.
 * A banner line such as `NEW ARRIVAL 🔥` is ignored.
