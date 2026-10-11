@@ -22,11 +22,9 @@ const STEPS: Array<{ icon: LucideIcon; tone: Tone; title: string; text: string }
   { icon: Truck, tone: "green", title: "Pay and track", text: "Pay securely, then follow your order until it arrives." },
 ];
 
-function HeroMosaic({ products, categories }: { products: Product[]; categories: string[] }) {
-  // Real product photos when we have them, otherwise soft category tiles.
-  const tiles: Array<Pick<Product, "name" | "category" | "images">> = products.length
-    ? products.slice(0, 4)
-    : categories.slice(0, 4).map(category => ({ name: category, category, images: [] }));
+function HeroMosaic({ categories }: { categories: string[] }) {
+  // Soft category tiles only. Product photos here meant several full-size downloads before anything else on the page.
+  const tiles: Array<Pick<Product, "name" | "category" | "images">> = categories.slice(0, 4).map(category => ({ name: category, category, images: [] }));
   if (!tiles.length) return null;
   return (
     <div className="relative hidden w-full max-w-[400px] justify-self-end md:block" aria-hidden>
@@ -43,7 +41,7 @@ function HeroMosaic({ products, categories }: { products: Product[]; categories:
   );
 }
 
-function Hero({ products, categories }: { products: Product[]; categories: string[] }) {
+function Hero({ categories }: { categories: string[] }) {
   return (
     <section className="relative overflow-hidden rounded-[28px] bg-[linear-gradient(135deg,#0071e3_0%,#3b4fd6_55%,#5b3fc4_100%)] p-6 text-white md:p-12 lg:p-14">
       <div className="pointer-events-none absolute -right-24 -top-24 size-80 rounded-full bg-white/10 blur-2xl" aria-hidden />
@@ -74,7 +72,7 @@ function Hero({ products, categories }: { products: Product[]; categories: strin
             ))}
           </ul>
         </div>
-        <HeroMosaic products={products} categories={categories} />
+        <HeroMosaic categories={categories} />
       </div>
     </section>
   );
@@ -98,7 +96,7 @@ function HomeSearch() {
 export default function Home() {
   usePageTitle();
   const { categories } = useCategoryCounts();
-  const latest = useCatalogue({ q: "", category: "All", sort: "newest" });
+  const latest = useCatalogue({ q: "", category: "All", sort: "newest", pageSize: 8 });
   const saved = useSavedProducts();
   const arrivals = latest.items.slice(0, 8);
   const shownCategories = categories.slice(0, 7);
@@ -110,7 +108,7 @@ export default function Home() {
           <HomeSearch />
         </div>
 
-        <Hero products={arrivals.filter(product => product.images.length)} categories={categories.map(item => item.category)} />
+        <Hero categories={categories.map(item => item.category)} />
 
         {categories.length > 0 && (
           <section aria-labelledby="categories-heading">
@@ -150,8 +148,8 @@ export default function Home() {
               <ProductGridSkeleton count={4} wide />
             ) : (
               <ProductRail>
-                {arrivals.map((product, index) => (
-                  <ProductCard key={product.id} product={product} priority={index < 2} saved={saved.isSaved(product.slug)} onToggleSave={() => saved.toggle(product.slug)} />
+                {arrivals.map(product => (
+                  <ProductCard key={product.id} product={product} imageMargin="0px" saved={saved.isSaved(product.slug)} onToggleSave={() => saved.toggle(product.slug)} />
                 ))}
               </ProductRail>
             )}
