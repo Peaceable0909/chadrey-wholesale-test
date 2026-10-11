@@ -383,6 +383,30 @@ export async function updateProduct(db: D1Database, id: string, input: ProductIn
   return Number(result.meta.changes ?? 0) > 0;
 }
 
+/**
+ * Fills in the text of a draft the bot saved moments ago, but ONLY while it is still hidden and exactly as the bot saved it,
+ * so it can never overwrite something a person changed in the meantime or touch a product that is already live.
+ * false means the draft was not updated (it changed, was shown in the store, or was deleted).
+ */
+export async function applyDraftText(
+  db: D1Database,
+  id: string,
+  args: {
+    expected: { name: string; short_description: string; description: string; category: string };
+    set: { short_description: string; description: string; category: string; colors: string[] | null };
+  },
+): Promise<boolean> {
+  const { expected, set } = args;
+  const result = await db
+    .prepare(
+      `UPDATE products SET short_description = ?, description = ?, category = ?, colors = COALESCE(?, colors), updated_at = ${NOW}
+       WHERE id = ? AND is_active = 0 AND name = ? AND short_description = ? AND description = ? AND category = ?`,
+    )
+    .bind(set.short_description, set.description, set.category, set.colors ? JSON.stringify(set.colors) : null, id, expected.name, expected.short_description, expected.description, expected.category)
+    .run();
+  return Number(result.meta.changes ?? 0) > 0;
+}
+
 const changes = (results: Array<{ meta: { changes?: number } }>) => results.reduce((sum, result) => sum + Number(result.meta.changes ?? 0), 0);
 
 export async function setActive(db: D1Database, ids: string[], active: boolean): Promise<number> {

@@ -39,8 +39,9 @@
   "images": {
     "binding": "IMAGES"
   },
-  // Public settings only. The bot token, the webhook secret and the allowed Telegram ids are NOT here:
-  // they are added in the Cloudflare dashboard as type "Secret" (Workers & Pages > chadrey-wholesale > Settings > Variables and Secrets).
+  // Public settings only. The bot token, the webhook secret, the allowed Telegram ids and the Puter token (PUTER_AUTH_TOKEN, optional,
+  // it switches on AI drafting) are NOT here: they are added in the Cloudflare dashboard as type "Secret"
+  // (Workers & Pages > chadrey-wholesale > Settings > Variables and Secrets). An optional plain variable AI_MODEL there changes the AI model.
   "vars": {
     // Sign-in still lives in Supabase for now. The Worker uses these two public values to ask Supabase whether
     // the person changing the shop is an administrator. The key is the same public key the website already contains.

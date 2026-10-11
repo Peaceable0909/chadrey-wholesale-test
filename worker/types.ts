@@ -82,6 +82,12 @@ export type Env = {
   SITE_URL?: string;
   /** Only the tests change this, to point at a pretend Telegram. */
   TELEGRAM_API_BASE?: string;
+  /** Optional. A Puter "API token" (puter.com/dashboard#account). With it the bot writes the missing parts of a draft with AI; Puter charges the AI to that account's own allowance. */
+  PUTER_AUTH_TOKEN?: string;
+  /** Optional. Which AI model writes the drafts. Defaults to a small, fast Claude model (see draftAi.ts). */
+  AI_MODEL?: string;
+  /** Only the tests change this, to point at a pretend Puter. */
+  PUTER_API_ORIGIN?: string;
 };
 
 export type WorkerContext = { waitUntil(promise: Promise<unknown>): void };

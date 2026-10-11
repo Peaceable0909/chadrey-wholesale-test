@@ -1,7 +1,8 @@
 # Add products from Telegram
 
 Send a photo to your own Telegram bot with the details as its caption. A few seconds later the product is in
-your shop as a **hidden draft**. Nothing goes live until you approve it.
+your shop as a **hidden draft**. Nothing goes live until you approve it. With [AI drafting](#let-ai-write-the-rest-optional)
+switched on, a few words (or none) are enough: the bot writes the description, picks the category and notes the colours.
 
 ```
 100ml Original sugar marshmallow
@@ -72,6 +73,61 @@ It shows `"ready":true` when everything is in place, or the names of the setting
 Send a photo with the caption from the top of this page. When the bot confirms, open **Admin → Products**. A banner
 says how many products are waiting for your OK.
 
+## Let AI write the rest (optional)
+
+With AI drafting on, you can send a photo with **just a name, or no words at all**. The bot saves the draft at once, then a few
+seconds later changes its reply to show what the AI wrote:
+
+```
+✅ Saved as a hidden draft
+Premium lunch box
+No price yet · minimum order 1
+Category: Bags (suggested by AI)
+Colours: beige, black, pink, blue (seen in the photo)
+
+✨ Written by AI from your photo. Please check it before you show it in the store:
+A quilted two-layer lunch bag with a shoulder strap.
+
+A quilted lunch bag with two zip compartments and a padded top handle. …
+```
+
+**What it writes:** a short summary and a description (from the photo and your words), a category (only one you already
+use, or none), the colours it can clearly see, and a name when you sent none.
+
+**What it never does:** it never sets the price, the currency, the minimum order, or anything about stock or delivery: those come
+only from what you type. It is told never to invent materials, sizes, brands or certificates, and any line about a price, a minimum
+order, stock or delivery that slips into its text is removed. It writes only on a draft that is still hidden and still exactly as the bot
+saved it, so it can never overwrite something you changed in the meantime or touch a product that is already live. If it fails, you get the
+draft exactly as you typed it, with a note saying why. Your own extra lines (colours, sizes, remarks) are kept under the AI's text exactly
+as typed.
+
+### Switch it on (about 5 minutes)
+
+The AI comes from [Puter](https://puter.com), which needs no API key: the AI is paid from the free monthly allowance of the Puter account
+whose token you use, and from credit you buy there after that. The shop pays nothing to anyone else.
+
+1. Sign in at puter.com (a free account is enough). Tip: use an account made only for the shop, because the token can act as that account.
+2. Open **puter.com/dashboard#account**, find **API token** and press **Create token**. The token is copied for you.
+3. In Cloudflare, go to **Workers & Pages → chadrey-wholesale → Settings → Variables and Secrets → Add**. Choose the type **Secret**, name it
+   `PUTER_AUTH_TOKEN`, paste the token, and press **Deploy**. Never put the token in a chat, an email or GitHub.
+4. In Telegram, send `/ai` to your bot. It answers *"✅ AI drafting works"*, or tells you what Puter said.
+5. Send a photo with a few words.
+
+The setup page (`…/api/telegram`) shows `"ai":true` once the token is in place (never the token itself).
+
+### Cost, privacy and limits
+
+* **Cost:** the default model, `claude-haiku-5-5`, is the smallest Claude model. Puter passes its list price through, about
+  **$0.10 per million tokens read and $0.50 per million written** (a token is about three quarters of a word, and a photo is
+  roughly 1,000 tokens), which is a **fraction of a cent per product**. You can watch the usage at puter.com/dashboard#usage. When the
+  monthly allowance is used up the bot says so and goes back to saving drafts as you type them.
+* **Better wording:** add a variable (type **Text**, not Secret) named `AI_MODEL` with another model name from Puter's list, for example
+  `claude-sonnet-5-5`. That costs about twenty times more per product. Remove the variable to go back to the default.
+* **Privacy:** the photo (shrunk to 768 pixels wide) and the words you typed, without the prices, are sent to Puter and to the company that runs
+  the model, only to write the draft. Nothing else from the shop is sent.
+* **Limits:** a free Puter account allows 30 AI requests per 10 seconds and 3 at once, far more than a person sending photos needs.
+* **Switch it off:** delete the secret `PUTER_AUTH_TOKEN`. Revoke the token itself at puter.com/dashboard#account if it ever leaks.
+
 ## Writing the caption
 
 * The **first line** is the product name. A size in the name is fine (`100ml`, `5 kg`).
@@ -83,6 +139,7 @@ says how many products are waiting for your OK.
 * Optional extra lines: `MOQ 24`, `per carton` after a price, `#perfume` or `Category: Perfume`,
   and anything else (for example `Colors: pink, white`) goes into the description.
 * A banner line such as `NEW ARRIVAL 🔥` is ignored.
+* Without AI the first line must be the name. With AI on, a photo with no words, or with only a price, is named by the AI.
 * When the caption does not say, the draft gets naira (₦), "per piece" and a minimum order of 1. These defaults live
   in `wrangler.jsonc` (`DEFAULT_CURRENCY`, `DEFAULT_UNIT`, `DEFAULT_MOQ`).
 * The "Review it" link in the bot's reply uses the address the message came through. To point it at your main
@@ -128,6 +185,12 @@ Each row shows warnings: *No category*, *No price*, *No photo*.
 | The check address lists `DB` or `PHOTOS` as missing | The Worker is not connected to the shop's database or photo storage. This only happens on a branch preview. On the real address it means a deploy went wrong: see [cloudflare-store.md](cloudflare-store.md). |
 | "used up today's free allowance" | The shop's free database allowance for the day is spent. It starts again at midnight UTC. The $5/month Workers plan removes the limit. |
 | The draft is there but has no photo | Reply to the bot's confirmation with the photo. If it keeps failing, the file may not be a real picture. |
+| "AI drafting is off" after `/ai` | The secret `PUTER_AUTH_TOKEN` is missing. Add it (see above) and press **Deploy**. |
+| "Puter did not accept the token" | The token was copied wrongly or has been revoked. Create a new one at puter.com/dashboard#account and replace the secret. |
+| "your Puter allowance for AI is used up" | The monthly allowance is spent. It renews every month, or add credit at puter.com. Drafts are still saved as you type them. |
+| "that AI model needs a paid Puter plan" | The model named in `AI_MODEL` is for paying Puter users. Delete that variable (the default works on a free account) or choose another model. |
+| "Puter is busy" / "took too long" | Try again in a minute. The draft is already saved. |
+| "the AI's answer could not be used" | The model answered in a form the bot could not read. Send the photo again; if it keeps happening, tell the developer which photo. |
 | Anything else | Cloudflare → Workers & Pages → chadrey-wholesale → **Logs** shows what happened. |
 
 To stop the bot, open `https://api.telegram.org/botYOUR_BOT_TOKEN/deleteWebhook`, or empty `TELEGRAM_ALLOWED_USER_IDS`.
@@ -146,6 +209,21 @@ If the token leaks, send `/revoke` to BotFather, then update `TELEGRAM_BOT_TOKEN
   keeps the bot token out of every reply and log line.
 * A message maps to a fixed product id (hash of chat and message id), and a Telegram photo to a fixed photo id, so
   redelivery and album photos find the right product without any extra table.
+* AI drafting (`worker/draftAi.ts`, `worker/puter.ts`, the second step of `createDraft` in `worker/intake.ts`): the draft is saved first, exactly as
+  without AI, and the Telegram webhook is answered at once. The AI then runs inside `ctx.waitUntil` (about 30 s of budget in total, so
+  the AI call is cut off after 16 s) and fills the draft with `applyDraftText`, a single `UPDATE` that only matches a draft that is still
+  hidden and unchanged. The first reply is changed with `editMessageText` (a new message when that fails). A photo with no usable name is
+  the one exception: the AI is asked before saving, because the product needs a name for its web address; albums are never named that way
+  because their other photos would arrive while the AI is still thinking. The AI sees the name and the owner's other lines, never the price
+  or the minimum order, and its answer is read as strict JSON, trimmed, capped, stripped of links, HTML and markdown, and any line that states
+  a price, a minimum order, stock or delivery is dropped (`parseAiAnswer`). It may only choose a category the shop already has.
+* Puter has no SDK that runs in a Worker, so `puterChat` sends the request Puter.js 2.6.4 sends: `POST https://api.puter.com/drivers/call` with
+  `{interface: "puter-chat-completion", driver: "ai-chat", method: "complete", args: {messages: [{content: [prompt, {image_url: {url}}]}], model,
+  max_tokens, normalize: true, vision: true}, auth_token}` (content type `text/plain;actually=json`; the token is also sent as a Bearer header).
+  Puter's OpenAI- and Anthropic-compatible endpoints need a paid Puter plan; `/drivers/call` works on a free account. No sampling options are
+  sent, because current Claude models reject non-default values. The tests use a pretend Puter (`worker/testkit.ts`, and `PUTER_API_ORIGIN` in
+  the browser tests); the live Puter has to be tried once with `/ai` after the token is added.
+* `PUTER_AUTH_TOKEN` is a secret (never in `wrangler.jsonc`); `AI_MODEL` is an optional plain variable. Errors and logs never contain the token.
 * Branch previews do not inherit production settings or secrets (Cloudflare's design). A preview has its own empty test
   database and photo storage, and `/api/telegram` reports "not set up" there, so a preview can never write to the real
   shop. The bot only works on the production address.

@@ -20,6 +20,17 @@ export function allowedUserIds(env: Env): Set<number> {
   return new Set(ids);
 }
 
+/** A small, fast Claude model: plenty for a short description, and it costs a fraction of a cent per product. */
+export const DEFAULT_AI_MODEL = "claude-haiku-5-5";
+
+export type AiSettings = { enabled: boolean; model: string };
+
+/** AI drafting is on when the Puter token is set. The model can be changed with AI_MODEL, for example "claude-sonnet-5-5". */
+export function aiSettings(env: Env): AiSettings {
+  const model = env.AI_MODEL?.trim() ?? "";
+  return { enabled: Boolean(env.PUTER_AUTH_TOKEN?.trim()), model: /^[A-Za-z0-9._:/-]{3,80}$/.test(model) ? model : DEFAULT_AI_MODEL };
+}
+
 export type IntakeDefaults = { currency: string; unit: string; moq: number };
 
 export function intakeDefaults(env: Env): IntakeDefaults {

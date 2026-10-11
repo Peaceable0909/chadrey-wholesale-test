@@ -136,11 +136,19 @@ describe("GET /api/telegram", () => {
   it("shows whether the setup is complete without revealing any value", async () => {
     const { ctx } = context();
     const ready = await handleTelegramRequest(new Request("https://shop.test/api/telegram"), env(), ctx);
-    expect(await ready.json()).toEqual({ ready: true, missing: [], allowedUsers: 2 });
+    expect(await ready.json()).toEqual({ ready: true, missing: [], allowedUsers: 2, ai: false });
 
     const empty = await handleTelegramRequest(new Request("https://shop.test/api/telegram"), env({ TELEGRAM_BOT_TOKEN: "", TELEGRAM_ALLOWED_USER_IDS: "" }), ctx);
     const body = (await empty.json()) as { ready: boolean; missing: string[]; allowedUsers: number };
-    expect(body).toEqual({ ready: false, missing: ["TELEGRAM_BOT_TOKEN"], allowedUsers: 0 });
+    expect(body).toEqual({ ready: false, missing: ["TELEGRAM_BOT_TOKEN"], allowedUsers: 0, ai: false });
+  });
+
+  it("says whether AI drafting is switched on, without revealing the Puter token", async () => {
+    const { ctx } = context();
+    const response = await handleTelegramRequest(new Request("https://shop.test/api/telegram"), env({ PUTER_AUTH_TOKEN: "puter-secret-token-value" }), ctx);
+    const text = await response.text();
+    expect(JSON.parse(text)).toMatchObject({ ready: true, ai: true });
+    expect(text).not.toContain("puter-secret-token-value");
   });
 
   it("is not ready until at least one person is allowed", async () => {

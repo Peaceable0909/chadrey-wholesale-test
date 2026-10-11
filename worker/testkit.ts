@@ -2,18 +2,44 @@ import { GIF_BYTES, JPEG_BYTES, PNG_BYTES, WEBP_BYTES } from "./testEnv";
 import type { D1Database, D1PreparedStatement, Env, R2Bucket, TelegramMessage, TelegramUpdate } from "./types";
 
 /**
- * A pretend Telegram for the bot's tests. Saving products and photos uses the real (local) database and
- * file storage from testEnv.ts, so only Telegram is pretended here.
+ * A pretend Telegram, and a pretend Puter (the AI), for the bot's tests. Saving products and photos uses the real (local)
+ * database and file storage from testEnv.ts, so only Telegram and Puter are pretended here.
  */
 
 export const TOKEN = "123456:TEST-BOT-TOKEN";
+export const PUTER_TOKEN = "puter-test-token-0123456789";
 export const OWNER = 1001;
+
+/** One request the pretend Puter received. */
+export type PuterCall = { body: any; headers: Record<string, string> };
+
+/** What a well-behaved model answers for the lunch-box photo used in the tests. */
+export const AI_ANSWER = {
+  name: "Quilted Insulated Lunch Bag",
+  short_description: "A quilted two-layer lunch bag with a shoulder strap.",
+  description: "A quilted lunch bag with two zip compartments and a padded top handle.\n\nIt is shown in beige, black, pink and blue.\n\n- Two zip compartments\n- Removable shoulder strap",
+  category: null as string | null,
+  colors: ["beige", "black", "pink", "blue"],
+};
+
+/** Puter's success envelope around the model's reply text. */
+export const puterOk = (text: string) => new Response(JSON.stringify({ success: true, result: { message: { role: "assistant", content: text } } }), { status: 200, headers: { "content-type": "application/json" } });
+/** An error the way Puter's server sends it (see its errorHandler): the message twice, and a short code. */
+export const puterError = (status: number, code: string, message: string) => new Response(JSON.stringify({ error: message, message, code }), { status, headers: { "content-type": "application/json" } });
 
 type Row = Record<string, unknown>;
 
 export function createBackend() {
   const state = {
+    /** Messages the bot sent. A message the bot later changed shows its newest text. */
     sent: [] as Array<{ chat_id: number; text: string; reply_to: number | null }>,
+    /** Every change the bot made to a message it had sent. */
+    edits: [] as Array<{ chat_id: number; message_id: number; text: string }>,
+    /** Set to make every message change fail. */
+    failEdit: false,
+    puterCalls: [] as PuterCall[],
+    /** What the pretend Puter answers: the model's reply text, or a whole response. Replace it to test failures. */
+    puterReply: (async () => JSON.stringify(AI_ANSWER)) as (call: PuterCall) => Response | string | Promise<Response | string>,
     telegramFiles: new Map<string, { path: string; bytes: Uint8Array }>(),
     requests: [] as Array<{ method: string; url: string }>,
     /** Set to make every Telegram file download fail. */
@@ -47,6 +73,14 @@ export function createBackend() {
       state.sent.push({ chat_id: Number(body.chat_id), text: String(body.text), reply_to: reply?.message_id ?? null });
       return json(200, { ok: true, result: { message_id: 9000 + state.sent.length } });
     }
+    if (call[2] === "editMessageText") {
+      if (state.failEdit) return json(400, { ok: false, description: "Bad Request: message can't be edited" });
+      const entry = state.sent[Number(body.message_id) - 9001];
+      if (!entry) return json(400, { ok: false, description: "Bad Request: message to edit not found" });
+      entry.text = String(body.text);
+      state.edits.push({ chat_id: Number(body.chat_id), message_id: Number(body.message_id), text: String(body.text) });
+      return json(200, { ok: true, result: { message_id: body.message_id } });
+    }
     if (call[2] === "getFile") {
       const found = state.telegramFiles.get(String(body.file_id));
       return found ? json(200, { ok: true, result: { file_id: body.file_id, file_path: found.path, file_size: found.bytes.length } }) : json(400, { ok: false, description: "Bad Request: wrong file_id" });
@@ -54,10 +88,20 @@ export function createBackend() {
     return json(404, { ok: false, description: "unknown method" });
   }
 
+  async function puter(url: URL, init?: RequestInit): Promise<Response> {
+    if (url.pathname !== "/drivers/call") return json(404, { success: false });
+    const call: PuterCall = { body: JSON.parse(String(init?.body ?? "{}")), headers: Object.fromEntries(new Headers(init?.headers).entries()) };
+    state.puterCalls.push(call);
+    if (call.body.auth_token !== PUTER_TOKEN) return puterError(401, "token_auth_failed", "Authentication failed");
+    const answer = await state.puterReply(call);
+    return typeof answer === "string" ? puterOk(answer) : answer;
+  }
+
   const fetchImpl = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     const url = new URL(typeof input === "string" ? input : input instanceof URL ? input.href : input.url);
     state.requests.push({ method: (init?.method ?? "GET").toUpperCase(), url: url.href });
     if (url.origin === "https://api.telegram.org") return telegram(url, init);
+    if (url.origin === "https://api.puter.com") return puter(url, init);
     return new Response("unexpected host", { status: 502 });
   };
 
