@@ -80,7 +80,7 @@ function AdminProductRow({ product, active, selecting, picked, onOpen, onToggle,
       {selecting ? (
         <>
           <button type="button" role="checkbox" aria-checked={picked} aria-label={`Select ${product.name}`} onClick={onToggle} className="press flex min-w-0 flex-1 items-center gap-3 text-left">
-            <span aria-hidden className={cn("grid size-6 shrink-0 place-items-center rounded-full border-2 transition-colors", picked ? "border-tint bg-tint text-white" : "border-separator-strong")}>
+            <span aria-hidden className={cn("grid size-6 shrink-0 place-items-center rounded-full border-2 transition-colors", picked ? "border-tint bg-tint text-on-tint" : "border-separator-strong")}>
               {picked && <Check className="size-4" strokeWidth={3} />}
             </span>
             {summary}
@@ -203,10 +203,11 @@ export default function AdminProducts() {
       setCategoryFor(null);
       setConfirmDelete(false);
       setSelection(new Map());
-      await refresh();
     } catch (caught) {
       toast.error(errorMessage(caught, failure));
     } finally {
+      // A change sent in several parts may have gone through partly, so always show what is really there now.
+      await refresh().catch(() => undefined);
       setBusy(null);
     }
   }

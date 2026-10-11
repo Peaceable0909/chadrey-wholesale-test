@@ -48,6 +48,8 @@ export type ApiDeps = { admin: AdminDeps; /** Where shopper-facing answers are r
 export const SHOP_CACHE_SECONDS = 30;
 
 export const MAX_PRODUCT_PHOTOS = 30;
+/** Nobody pages this deep through a catalogue; the limit keeps "page 99999" from being a different question every time. */
+const MAX_PAGE = 200;
 const MAX_JSON_BYTES = 200_000;
 
 /* Reading what the website sent */
@@ -174,7 +176,7 @@ async function catalogueRoutes(request: Request, env: Env, url: URL, rest: strin
 
   if (rest[0] === "products" && rest.length === 1) {
     const size = intParam(q.get("size"), 24, 1, 60);
-    const page = intParam(q.get("page"), 0, 0, 100_000);
+    const page = intParam(q.get("page"), 0, 0, MAX_PAGE);
     const category = q.get("category")?.trim();
     const { rows, total } = await listProducts(env.DB, {
       active: true,
@@ -334,7 +336,7 @@ async function adminRoutes(request: Request, env: Env, url: URL, rest: string[],
     if (method !== "GET") throw wrongMethod();
     const status = q.get("status");
     const size = intParam(q.get("size"), 30, 1, 60);
-    const page = intParam(q.get("page"), 0, 0, 100_000);
+    const page = intParam(q.get("page"), 0, 0, MAX_PAGE);
     const { rows, total } = await listProducts(env.DB, {
       active: status === "live" ? true : status === "hidden" ? false : null,
       search: searchTerm(q.get("q")),
@@ -417,14 +419,54 @@ async function adminRoutes(request: Request, env: Env, url: URL, rest: string[],
   throw new HttpError(404, "Not found");
 }
 
-async function rememberedFor(request: Request, ctx: WorkerContext, cache: EdgeCache | null, answer: () => Promise<Response>): Promise<Response> {
-  if (!cache || request.method !== "GET") return answer();
-  // A plain GET of the same address, so nothing about the visitor can split or poison what is remembered.
-  const key = new Request(new URL(request.url).href);
+/** Lower-cases only A-Z, exactly as the database's lower() does, so two spellings share an answer only if the database would too. */
+const asciiLower = (text: string) => text.replace(/[A-Z]/g, letter => letter.toLowerCase());
+
+/**
+ * The address that identifies a shopper answer in the shared memory: only the parts that change the answer, spelled the
+ * one way, in a fixed order. Extra or reordered parts of the address (`?x=123`, `?q=Tote` against `?q=tote`) therefore
+ * cannot make every request look new, which would bypass the memory and ask the database each time.
+ */
+function cacheKeyFor(url: URL, rest: string[]): string {
+  const q = url.searchParams;
+  const params = new URLSearchParams();
+  if (rest[0] === "products" && rest.length === 1) {
+    params.set("page", String(intParam(q.get("page"), 0, 0, MAX_PAGE)));
+    params.set("size", String(intParam(q.get("size"), 24, 1, 60)));
+    const term = searchTerm(q.get("q"));
+    if (term) params.set("q", asciiLower(term));
+    const category = q.get("category")?.trim();
+    if (category && category !== "All") params.set("category", category);
+    if (q.has("slugs")) params.set("slugs", (q.get("slugs") ?? "").split(",").map(slug => slug.trim()).filter(Boolean).slice(0, 80).join(","));
+    const sort = sortParam(q.get("sort"));
+    if (sort !== "newest") params.set("sort", sort);
+  } else if (rest[0] === "related" && rest.length === 1) {
+    for (const name of ["slug", "category"]) if (q.get(name)) params.set(name, q.get(name) ?? "");
+    params.set("limit", String(intParam(q.get("limit"), 8, 1, 24)));
+  } else if (rest[0] === "names" && rest.length === 1) {
+    params.set("ids", idList(q.get("ids"), 80).join(","));
+  }
+  params.sort();
+  const query = params.toString();
+  return `${url.origin}${url.pathname}${query ? `?${query}` : ""}`;
+}
+
+const withCacheNote = (response: Response, note: "hit" | "miss" | "off"): Response => {
+  const headers = new Headers(response.headers);
+  headers.set("x-shop-cache", note);
+  return new Response(response.body, { status: response.status, headers });
+};
+
+async function rememberedFor(request: Request, ctx: WorkerContext, cache: EdgeCache | null, address: string, answer: () => Promise<Response>): Promise<Response> {
+  if (request.method !== "GET") return answer();
+  if (!cache) return withCacheNote(await answer(), "off");
+  // A plain GET of the cleaned-up address, so nothing about the visitor can split or poison what is remembered.
+  const key = new Request(address);
   const hit = await cache.match(key);
   if (hit) {
     const headers = new Headers(hit.headers);
     headers.set("cache-control", "no-store");
+    headers.set("x-shop-cache", "hit");
     return new Response(hit.body, { status: hit.status, headers });
   }
   const fresh = await answer();
@@ -433,7 +475,7 @@ async function rememberedFor(request: Request, ctx: WorkerContext, cache: EdgeCa
     headers.set("cache-control", `public, max-age=${SHOP_CACHE_SECONDS}`);
     ctx.waitUntil(cache.put(key, new Response(fresh.clone().body, { status: fresh.status, headers })).catch(() => undefined));
   }
-  return fresh;
+  return withCacheNote(fresh, "miss");
 }
 
 export async function handleApi(request: Request, env: Env, ctx: WorkerContext, deps: ApiDeps = { admin: realDeps }): Promise<Response> {
@@ -451,7 +493,7 @@ export async function handleApi(request: Request, env: Env, ctx: WorkerContext, 
       });
     const rest = parts.slice(2);
     if (parts[1] === "catalogue") {
-      return await rememberedFor(request, ctx, deps.cache === undefined ? defaultEdgeCache() : deps.cache, async () => {
+      return await rememberedFor(request, ctx, deps.cache === undefined ? defaultEdgeCache() : deps.cache, cacheKeyFor(url, rest), async () => {
         await ensureSchema(env.DB);
         return catalogueRoutes(request, env, url, rest);
       });

@@ -1,11 +1,44 @@
 import path from "node:path";
 import { ensureSchema } from "./schema";
-import type { D1Database, Env, ImagesBinding, R2Bucket } from "./types";
+import type { D1Database, D1PreparedStatement, Env, ImagesBinding, R2Bucket } from "./types";
 
 /**
  * A real, empty copy of Cloudflare's database (D1) and file storage (R2) running on this computer, for the tests.
  * It is the same engine Cloudflare runs, so SQL mistakes show up here instead of on the live shop.
  */
+
+/** Cloudflare's database refuses a LIKE or GLOB pattern longer than this. The local copy used by the tests does not. */
+const MAX_LIKE_PATTERN_BYTES = 50;
+
+type Wrapped = D1PreparedStatement & { real: D1PreparedStatement };
+
+/**
+ * Makes the local database as strict as the real one about LIKE and GLOB patterns, so a long product name or search
+ * cannot pass the tests and then fail on the live shop. Any text longer than the limit bound into a LIKE or GLOB
+ * statement throws, as D1 does ("LIKE or GLOB pattern too complex").
+ */
+export function strictLikeLimit(db: D1Database): D1Database {
+  const check = (sql: string, values: unknown[]) => {
+    if (!/\b(?:LIKE|GLOB)\b/i.test(sql)) return;
+    for (const value of values) {
+      if (typeof value === "string" && new TextEncoder().encode(value).length > MAX_LIKE_PATTERN_BYTES) throw new Error("D1_ERROR: LIKE or GLOB pattern too complex: SQLITE_ERROR");
+    }
+  };
+  const wrap = (sql: string, real: D1PreparedStatement): Wrapped => ({
+    real,
+    bind(...values: unknown[]) {
+      check(sql, values);
+      return wrap(sql, real.bind(...values));
+    },
+    first: <T = Record<string, unknown>>() => real.first<T>(),
+    all: <T = Record<string, unknown>>() => real.all<T>(),
+    run: () => real.run(),
+  });
+  return {
+    prepare: (sql: string) => wrap(sql, db.prepare(sql)),
+    batch: <T = Record<string, unknown>>(statements: D1PreparedStatement[]) => db.batch<T>(statements.map(statement => (statement as Wrapped).real ?? statement)),
+  };
+}
 
 export const SUPABASE_URL = "https://proj.supabase.co";
 export const PUBLISHABLE_KEY = "sb_publishable_TEST_KEY";
@@ -29,7 +62,7 @@ export async function createTestEnv(overrides: Partial<Env> = {}): Promise<TestE
 
   const env: Env = {
     ASSETS: { fetch: async () => new Response("asset") },
-    DB,
+    DB: strictLikeLimit(DB),
     PHOTOS,
     SUPABASE_URL,
     SUPABASE_PUBLISHABLE_KEY: PUBLISHABLE_KEY,

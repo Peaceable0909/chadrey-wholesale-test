@@ -195,8 +195,6 @@ export type ListQuery = {
   offset: number;
 };
 
-const likeEscape = (text: string) => text.replace(/[\\%_]/g, match => `\\${match}`);
-
 function filters(query: Omit<ListQuery, "limit" | "offset" | "sort">): { clause: string; binds: unknown[] } {
   const parts: string[] = [];
   const binds: unknown[] = [];
@@ -215,8 +213,11 @@ function filters(query: Omit<ListQuery, "limit" | "offset" | "sort">): { clause:
   const term = query.search?.trim();
   if (term) {
     const columns = query.searchFields === "admin" ? ["p.name", "p.category", "p.slug"] : ["p.name", "p.short_description", "p.category"];
-    parts.push(`(${columns.map(column => `${column} LIKE ? ESCAPE '\\'`).join(" OR ")})`);
-    for (let index = 0; index < columns.length; index += 1) binds.push(`%${likeEscape(term)}%`);
+    // "Contains this text, ignoring upper/lower case". Not LIKE: D1 refuses a LIKE pattern longer than 50 bytes,
+    // which a long search (or, in freeSlug, a long product name) easily exceeds. instr() has no such limit and
+    // treats % and _ as ordinary characters.
+    parts.push(`(${columns.map(column => `instr(lower(${column}), lower(?)) > 0`).join(" OR ")})`);
+    for (let index = 0; index < columns.length; index += 1) binds.push(term);
   }
   for (const [column, list] of [["slug", query.slugs], ["id", query.ids]] as const) {
     if (!list) continue;
@@ -291,7 +292,9 @@ export async function summaries(db: D1Database, query: { active: boolean | null;
 
 /** "rattan-bag", or "rattan-bag-2" when that web address is taken. */
 export async function freeSlug(db: D1Database, base: string): Promise<string> {
-  const result = await db.prepare("SELECT slug FROM products WHERE slug LIKE ? ESCAPE '\\' LIMIT 200").bind(`${likeEscape(base)}%`).all<{ slug: string }>();
+  // Every address that could clash starts with `base` and continues with a letter, digit or hyphen (all of which sort
+  // before "~"), so a range test finds them. LIKE would too, but D1 limits a LIKE pattern to 50 bytes and names make long slugs.
+  const result = await db.prepare("SELECT slug FROM products WHERE slug >= ? AND slug < ? LIMIT 200").bind(base, `${base}~`).all<{ slug: string }>();
   return uniqueSlug(base, result.results.map(row => row.slug));
 }
 

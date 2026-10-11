@@ -109,7 +109,8 @@ export async function handlePhotoRequest(request: Request, env: Env, ctx: Worker
   let keep = true;
 
   // Smaller copies are made for pictures that can be shrunk safely. Animated GIFs are sent as they are.
-  if (width && env.IMAGES && /^image\/(jpeg|png|webp)$/.test(contentType)) {
+  const shrinkable = /^image\/(jpeg|png|webp)$/.test(contentType);
+  if (width && env.IMAGES && shrinkable) {
     const bytes = await object.arrayBuffer();
     try {
       const format = acceptsWebp ? "image/webp" : contentType === "image/png" ? "image/png" : "image/jpeg";
@@ -124,6 +125,11 @@ export async function handlePhotoRequest(request: Request, env: Env, ctx: Worker
       response = new Response(bytes, { headers: { ...headers, "cache-control": "public, max-age=300" } });
       keep = false;
     }
+  } else if (width && shrinkable) {
+    // A smaller copy was asked for but this deployment has no resizer (a preview): send the full photo, but only for a
+    // few minutes, so neither browsers nor Cloudflare keep it for a year as "the" smaller copy once the resizer exists.
+    response = new Response(object.body, { headers: { ...headers, "cache-control": "public, max-age=300" } });
+    keep = false;
   } else {
     response = new Response(object.body, { headers });
   }

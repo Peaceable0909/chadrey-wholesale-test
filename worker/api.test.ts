@@ -614,6 +614,43 @@ describe("sharing answers between visitors", () => {
     expect(JSON.parse(withSignIn.body).total).toBe(1);
   });
 
+  it("treats the same question written differently as one", async () => {
+    await seed({ name: "Tote Bag", slug: "tote" });
+    const cache = fakeCache();
+    const { db, counter } = countingDb();
+    await visit("/api/catalogue/products?q=Tote", cache, db);
+    const afterFirst = counter.queries;
+    for (const path of [
+      "/api/catalogue/products?q=tote",
+      "/api/catalogue/products?q=TOTE&x=1&utm_source=ad",
+      "/api/catalogue/products?size=24&page=0&q=tote&sort=newest&category=All",
+      "/api/catalogue/products?q=%20tote%20",
+    ]) {
+      expect(JSON.parse((await visit(path, cache, db)).body).total, path).toBe(1);
+    }
+    expect(counter.queries).toBe(afterFirst);
+    expect(cache.puts).toHaveLength(1);
+  });
+
+  it("does not let a huge page number or random extras make every request look new", async () => {
+    const cache = fakeCache();
+    for (const query of ["?page=100000", "?page=999999", "?page=200&junk=1", "?junk=2&page=500"]) await visit(`/api/catalogue/products${query}`, cache);
+    expect(cache.puts).toHaveLength(1);
+  });
+
+  it("says in a header whether the answer came from memory", async () => {
+    const cache = fakeCache();
+    const note = async (memory: ReturnType<typeof fakeCache> | null) => {
+      const pending: Promise<unknown>[] = [];
+      const response = await handleApi(new Request("https://shop.test/api/catalogue/categories"), test.env, { waitUntil: promise => void pending.push(promise) }, { admin: supabase.deps, cache: memory });
+      await Promise.all(pending);
+      return response.headers.get("x-shop-cache");
+    };
+    expect(await note(cache)).toBe("miss");
+    expect(await note(cache)).toBe("hit");
+    expect(await note(null)).toBe("off");
+  });
+
   it("never remembers a failure", async () => {
     const cache = fakeCache();
     expect((await visit("/api/catalogue/products/not-yet", cache)).status).toBe(404);

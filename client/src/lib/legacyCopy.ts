@@ -1,7 +1,8 @@
 import { mapProductRow, type Product } from "@/lib/catalogue";
-import { fetchAdminSummaries } from "@/lib/catalogueApi";
+import { fetchAdminProductsByIds } from "@/lib/catalogueApi";
 import type { ProductFields } from "@/lib/productDraft";
-import { createProductRecord, setProductActive, uploadProductPhoto } from "@/lib/productWriteApi";
+import { createProductRecord, deleteProductRecord, setProductActive, uploadProductPhoto, type CreatedProduct } from "@/lib/productWriteApi";
+import { ApiError } from "@/lib/shopApi";
 import { getSupabaseClient } from "@/lib/supabase";
 
 /*
@@ -21,18 +22,38 @@ export type LegacyProduct = {
   photos: LegacyImage[];
 };
 
+const OLD_PAGE = 500;
+const ASK_AT_A_TIME = 60;
+
+/** Every old product, read a page at a time so a big old store is never cut short. */
+async function readOldProducts(): Promise<Array<Record<string, unknown>>> {
+  const rows: Array<Record<string, unknown>> = [];
+  for (let from = 0; ; from += OLD_PAGE) {
+    const { data, error } = await getSupabaseClient()
+      .from("products")
+      .select("*,product_images(id,storage_path,public_url,is_primary,sort_order,alt_text,label)")
+      .order("created_at", { ascending: true })
+      .order("id", { ascending: true })
+      .range(from, from + OLD_PAGE - 1);
+    if (error || !Array.isArray(data)) return from === 0 ? [] : rows;
+    rows.push(...(data as Array<Record<string, unknown>>));
+    if (data.length < OLD_PAGE) return rows;
+  }
+}
+
 /** Old products that are not in the new store yet. Returns an empty list when the old store cannot be read. */
 export async function findUncopied(): Promise<LegacyProduct[]> {
-  const { data, error } = await getSupabaseClient()
-    .from("products")
-    .select("*,product_images(id,storage_path,public_url,is_primary,sort_order,alt_text,label)")
-    .order("created_at", { ascending: true })
-    .limit(1000);
-  if (error || !Array.isArray(data) || !data.length) return [];
+  const rows = (await readOldProducts()).filter(row => typeof row.id === "string");
+  if (!rows.length) return [];
 
-  const already = new Set((await fetchAdminSummaries({ q: "", status: "all" }, 2000)).map(item => item.id.toLowerCase()));
-  return (data as Array<Record<string, unknown>>)
-    .filter(row => typeof row.id === "string" && !already.has(String(row.id).toLowerCase()))
+  // Ask the new store only about these products, so it does not matter how many products it already holds.
+  const already = new Set<string>();
+  const ids = rows.map(row => String(row.id).toLowerCase());
+  for (let index = 0; index < ids.length; index += ASK_AT_A_TIME) {
+    for (const product of await fetchAdminProductsByIds(ids.slice(index, index + ASK_AT_A_TIME))) already.add(product.id.toLowerCase());
+  }
+  return rows
+    .filter(row => !already.has(String(row.id).toLowerCase()))
     .map(row => ({
       id: String(row.id),
       name: String(row.name ?? "Product"),
@@ -83,26 +104,104 @@ async function download(url: string): Promise<Blob> {
   return blob;
 }
 
+/** A product that could not be copied. `leftBehind` is true when an unfinished hidden copy could not be removed again. */
+export class CopyFailed extends Error {
+  constructor(
+    message: string,
+    readonly productName: string,
+    readonly leftBehind: boolean,
+  ) {
+    super(message);
+    this.name = "CopyFailed";
+  }
+}
+
+const reasonOf = (error: unknown): string => (error instanceof Error && error.message ? error.message : "It did not copy.");
+
 /**
  * Copies one product. It is created hidden, gets its photos, and only then goes live (if it was live), so shoppers never
- * see it half-finished. If something fails part-way it simply stays hidden; running it again carries on where it stopped.
+ * see it half-finished. If something fails part-way the unfinished copy is removed again, so pressing the button again
+ * starts that product from the beginning instead of finding a half-made one it takes for finished.
+ * A product the new store already has is left exactly as it is (it may have been hidden on purpose).
  */
 export async function copyLegacyProduct(legacy: LegacyProduct, onProgress: (progress: CopyProgress) => void = () => undefined): Promise<{ photos: number }> {
   const fields = fieldsFromLegacy(legacy.row);
   const total = legacy.photos.length;
   const report = (step: string, done: number) => onProgress({ name: legacy.name, step, done, total });
+  const createdAt = isoDate(legacy.row.created_at);
 
   report("Creating the product", 0);
-  const created = await createProductRecord({ ...fields, isActive: false }, { id: legacy.id, slug: String(legacy.row.slug ?? ""), createdAt: isoDate(legacy.row.created_at) });
-
-  const coverId = (legacy.photos.find(photo => photo.is_primary) ?? legacy.photos[0])?.id;
-  for (let index = 0; index < legacy.photos.length; index += 1) {
-    const photo = legacy.photos[index];
-    report(`Copying photo ${index + 1} of ${total}`, index);
-    await uploadProductPhoto(created.id, await download(photo.public_url), { imageId: photo.id, label: photo.label ?? undefined, primary: photo.id === coverId, sort: Number(photo.sort_order) });
+  let created: CreatedProduct;
+  try {
+    created = await createProductRecord({ ...fields, isActive: false }, { id: legacy.id, slug: String(legacy.row.slug ?? ""), createdAt });
+  } catch (error) {
+    // A different product in the new store (for example one added from Telegram) may already use the old web address:
+    // let the new store pick the next free one rather than giving up on this product.
+    if (!(error instanceof ApiError && error.code === "slug_taken")) throw error;
+    created = await createProductRecord({ ...fields, isActive: false }, { id: legacy.id, createdAt });
   }
+  if (created.existed) return { photos: 0 };
 
-  report("Finishing", total);
-  if (fields.isActive) await setProductActive(created.id, true);
-  return { photos: total };
+  try {
+    const coverId = (legacy.photos.find(photo => photo.is_primary) ?? legacy.photos[0])?.id;
+    for (let index = 0; index < legacy.photos.length; index += 1) {
+      const photo = legacy.photos[index];
+      report(`Copying photo ${index + 1} of ${total}`, index);
+      await uploadProductPhoto(created.id, await download(photo.public_url), { imageId: photo.id, label: photo.label ?? undefined, primary: photo.id === coverId, sort: Number(photo.sort_order) });
+    }
+
+    report("Finishing", total);
+    if (fields.isActive) await setProductActive(created.id, true);
+    return { photos: total };
+  } catch (error) {
+    let leftBehind = false;
+    try {
+      await deleteProductRecord(created.id);
+    } catch {
+      leftBehind = true;
+    }
+    throw new CopyFailed(reasonOf(error), legacy.name, leftBehind);
+  }
+}
+
+export type CopySummary = {
+  copied: number;
+  failed: Array<{ name: string; reason: string; leftBehind: boolean }>;
+  /** True when it gave up early because every other product would fail the same way (signed out, shop unreachable). */
+  stopped: boolean;
+};
+
+/** Copies every product it can. One that fails does not stop the others. */
+export async function copyAllLegacy(items: LegacyProduct[], hooks: { onProgress?: (progress: CopyProgress) => void; onPosition?: (index: number, count: number) => void } = {}): Promise<CopySummary> {
+  const summary: CopySummary = { copied: 0, failed: [], stopped: false };
+  for (let index = 0; index < items.length; index += 1) {
+    hooks.onPosition?.(index, items.length);
+    try {
+      await copyLegacyProduct(items[index], hooks.onProgress);
+      summary.copied += 1;
+    } catch (caught) {
+      summary.failed.push({ name: items[index].name, reason: reasonOf(caught), leftBehind: caught instanceof CopyFailed && caught.leftBehind });
+      const cause = caught instanceof ApiError ? caught : null;
+      if (cause && (cause.status === 0 || cause.status === 401 || cause.status === 403)) {
+        summary.stopped = true;
+        break;
+      }
+    }
+  }
+  return summary;
+}
+
+/** What to tell the administrator when some products did not copy. Empty when everything did. */
+export function describeCopyProblems(summary: CopySummary): string {
+  if (!summary.failed.length) return "";
+  const [first] = summary.failed;
+  const left = summary.failed.filter(item => item.leftBehind).map(item => item.name);
+  const head =
+    summary.failed.length === 1
+      ? `“${first.name}” did not copy: ${first.reason}`
+      : `${summary.failed.length} products did not copy (${summary.failed.map(item => `“${item.name}”`).slice(0, 3).join(", ")}${summary.failed.length > 3 ? " and more" : ""}). The first problem was: ${first.reason}`;
+  const tail = left.length
+    ? ` An unfinished hidden copy of ${left.map(name => `“${name}”`).join(", ")} is still in Admin → Products → Hidden: delete it there, then press the button again.`
+    : " Nothing was left half-done: press the button again to try the rest again.";
+  return `${head}${/[.!?]$/.test(head) ? "" : "."}${tail}`;
 }

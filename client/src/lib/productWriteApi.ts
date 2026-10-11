@@ -29,14 +29,14 @@ export function toProductBody(fields: ProductFields) {
   };
 }
 
-export type CreatedProduct = { id: string; slug: string };
+export type CreatedProduct = { id: string; slug: string; /** True when a product with this id was already there (nothing was changed). */ existed: boolean };
 
 /**
  * Creates a product. Without a web address one is made from the name ("rattan-bag", then "rattan-bag-2", …).
  * Giving the id, web address and date keeps a product exactly as it was when copying it from another store.
  */
 export async function createProductRecord(fields: ProductFields, options: { id?: string; slug?: string; createdAt?: string } = {}): Promise<CreatedProduct> {
-  const created = await shopFetch<CreatedProduct>("/api/admin/products", {
+  const created = await shopFetch<{ id: string; slug: string; existed?: boolean }>("/api/admin/products", {
     admin: true,
     method: "POST",
     json: {
@@ -46,7 +46,7 @@ export async function createProductRecord(fields: ProductFields, options: { id?:
       ...(options.createdAt ? { created_at: options.createdAt } : {}),
     },
   });
-  return { id: created.id, slug: created.slug };
+  return { id: created.id, slug: created.slug, existed: Boolean(created.existed) };
 }
 
 export async function updateProductRecord(id: string, fields: ProductFields): Promise<void> {
