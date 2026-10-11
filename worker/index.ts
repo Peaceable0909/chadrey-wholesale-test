@@ -1,14 +1,17 @@
+import { handleApi } from "./api";
 import { allowedUserIds, missingConfig, safeEqual } from "./config";
+import { errorResponse, json } from "./http";
 import { handleUpdate, type IntakeDeps } from "./intake";
+import { handlePhotoRequest } from "./photos";
 import type { Env, TelegramUpdate, WorkerContext } from "./types";
 
 /**
- * Cloudflare runs this only for /api/telegram (see run_worker_first in wrangler.jsonc). Every other address is
- * served straight from the website files without waking the Worker.
+ * Cloudflare runs this only for the addresses listed under run_worker_first in wrangler.jsonc:
+ *   /api/telegram   the Telegram product intake
+ *   /api/catalogue  what shoppers see        /api/admin  changing the shop
+ *   /photos         product photos
+ * Every other address is served straight from the website files without waking the Worker.
  */
-
-const json = (body: unknown, status = 200, headers: Record<string, string> = {}) =>
-  new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", ...headers } });
 
 const MAX_BODY_BYTES = 1_000_000;
 
@@ -51,7 +54,13 @@ export async function handleTelegramRequest(request: Request, env: Env, ctx: Wor
 export default {
   async fetch(request: Request, env: Env, ctx: WorkerContext): Promise<Response> {
     const { pathname } = new URL(request.url);
-    if (pathname === "/api/telegram") return handleTelegramRequest(request, env, ctx);
+    try {
+      if (pathname === "/api/telegram") return await handleTelegramRequest(request, env, ctx);
+      if (pathname.startsWith("/photos/")) return await handlePhotoRequest(request, env, ctx);
+      if (pathname.startsWith("/api/catalogue/") || pathname.startsWith("/api/admin/")) return await handleApi(request, env, ctx);
+    } catch (error) {
+      return errorResponse(error);
+    }
     if (pathname.startsWith("/api/")) return json({ error: "Not found" }, 404);
     return env.ASSETS.fetch(request);
   },

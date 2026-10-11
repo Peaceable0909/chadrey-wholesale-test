@@ -1,11 +1,14 @@
 import type { Env } from "./types";
 
-const REQUIRED = ["TELEGRAM_BOT_TOKEN", "TELEGRAM_WEBHOOK_SECRET", "SUPABASE_SERVICE_KEY", "SUPABASE_URL"] as const;
+const REQUIRED = ["TELEGRAM_BOT_TOKEN", "TELEGRAM_WEBHOOK_SECRET"] as const;
 const UNITS = ["pc", "set", "pair", "pack", "dozen", "carton", "kg", "metre"];
 
-/** Names (never values) of the settings that are still empty. */
+/** Names (never values) of the settings that are still empty. DB and PHOTOS are the shop's database and photo storage. */
 export function missingConfig(env: Env): string[] {
-  return REQUIRED.filter(name => !env[name]?.trim());
+  const missing: string[] = REQUIRED.filter(name => !env[name]?.trim());
+  if (!env.DB) missing.push("DB");
+  if (!env.PHOTOS) missing.push("PHOTOS");
+  return missing;
 }
 
 /** "123456789, 987654321" → the set of ids. Anything that is not a number is ignored. */

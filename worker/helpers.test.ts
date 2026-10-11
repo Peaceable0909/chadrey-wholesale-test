@@ -20,7 +20,8 @@ describe("stableUuid", () => {
 describe("configuration", () => {
   it("lists the names of missing settings, never their values", () => {
     expect(missingConfig(baseEnv())).toEqual([]);
-    expect(missingConfig(baseEnv({ TELEGRAM_BOT_TOKEN: "  ", SUPABASE_URL: undefined }))).toEqual(["TELEGRAM_BOT_TOKEN", "SUPABASE_URL"]);
+    expect(missingConfig(baseEnv({ TELEGRAM_BOT_TOKEN: "  ", TELEGRAM_WEBHOOK_SECRET: undefined }))).toEqual(["TELEGRAM_BOT_TOKEN", "TELEGRAM_WEBHOOK_SECRET"]);
+    expect(missingConfig(baseEnv({ DB: undefined as never }))).toEqual(["DB"]);
   });
 
   it("reads allowed Telegram ids from a comma list and ignores anything else", () => {

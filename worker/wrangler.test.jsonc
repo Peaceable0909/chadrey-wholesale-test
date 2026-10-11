@@ -1,0 +1,13 @@
+{
+  // Only used by the tests (worker/testEnv.ts): it gives them a real, empty, in-memory copy of Cloudflare's
+  // database (D1) and file storage (R2) on this computer. Nothing here touches the real shop.
+  // The binding names must match wrangler.jsonc; worker/index.test.ts checks that they do.
+  "name": "chadrey-wholesale-tests",
+  "compatibility_date": "2025-09-01",
+  "d1_databases": [
+    { "binding": "DB", "database_name": "test", "database_id": "00000000-0000-0000-0000-000000000000" },
+    // Stays empty, to test what happens the first time the shop runs on a brand-new database.
+    { "binding": "FRESH_DB", "database_name": "test-fresh", "database_id": "00000000-0000-0000-0000-000000000001" }
+  ],
+  "r2_buckets": [{ "binding": "PHOTOS", "bucket_name": "test" }]
+}

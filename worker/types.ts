@@ -1,7 +1,66 @@
+/*
+ * The few parts of Cloudflare's database (D1), file storage (R2) and image resizer that the shop uses.
+ * They are written out here, instead of importing Cloudflare's type package, so the website build
+ * does not need it and does not mix its types with the browser's.
+ */
+export interface D1Result<T = Record<string, unknown>> {
+  results: T[];
+  success: boolean;
+  meta: { changes?: number; last_row_id?: number; rows_read?: number; rows_written?: number };
+}
+
+export interface D1PreparedStatement {
+  bind(...values: unknown[]): D1PreparedStatement;
+  first<T = Record<string, unknown>>(): Promise<T | null>;
+  all<T = Record<string, unknown>>(): Promise<D1Result<T>>;
+  run(): Promise<D1Result>;
+}
+
+export interface D1Database {
+  prepare(query: string): D1PreparedStatement;
+  /** Runs the statements in order as one all-or-nothing group. */
+  batch<T = Record<string, unknown>>(statements: D1PreparedStatement[]): Promise<D1Result<T>[]>;
+}
+
+export interface R2ObjectInfo {
+  key: string;
+  size: number;
+  httpEtag: string;
+  httpMetadata?: { contentType?: string; cacheControl?: string };
+}
+
+export interface R2ObjectBody extends R2ObjectInfo {
+  body: ReadableStream<Uint8Array>;
+  arrayBuffer(): Promise<ArrayBuffer>;
+}
+
+export interface R2Bucket {
+  get(key: string): Promise<R2ObjectBody | null>;
+  head(key: string): Promise<R2ObjectInfo | null>;
+  put(key: string, value: ArrayBuffer | ArrayBufferView | ReadableStream<Uint8Array> | string, options?: { httpMetadata?: { contentType?: string; cacheControl?: string } }): Promise<R2ObjectInfo>;
+  delete(keys: string | string[]): Promise<void>;
+}
+
+export interface ImagesChain {
+  transform(options: { width?: number; height?: number; fit?: "scale-down" | "contain" | "cover" | "crop" | "pad" }): ImagesChain;
+  output(options: { format: string; quality?: number }): Promise<{ response(init?: { headers?: Record<string, string> }): Response }>;
+}
+
+export interface ImagesBinding {
+  input(source: ReadableStream<Uint8Array> | ArrayBuffer): ImagesChain;
+}
+
 /** Settings the Worker reads. Secrets are set in the Cloudflare dashboard as "Secret", never in this repository. */
 export type Env = {
   /** Serves the website files. Only used if a request that is not for /api/* ever reaches the Worker. */
   ASSETS: { fetch(request: Request): Promise<Response> };
+
+  /** The shop's database: products and their photo records. Declared in wrangler.jsonc. */
+  DB: D1Database;
+  /** The shop's photo files. Declared in wrangler.jsonc. */
+  PHOTOS: R2Bucket;
+  /** Makes smaller copies of photos on demand. Optional: without it the full-size photo is sent. */
+  IMAGES?: ImagesBinding;
 
   /** From @BotFather when the bot is created. */
   TELEGRAM_BOT_TOKEN?: string;
@@ -9,11 +68,10 @@ export type Env = {
   TELEGRAM_WEBHOOK_SECRET?: string;
   /** Telegram user ids allowed to add products, separated by commas. */
   TELEGRAM_ALLOWED_USER_IDS?: string;
-  /** The Supabase "secret" or "service_role" key. It can change everything, so it only lives here as a Secret. */
-  SUPABASE_SERVICE_KEY?: string;
-
-  /** Public project address. Set in wrangler.jsonc. */
+  /** Public project address. Set in wrangler.jsonc. Used only to check who is signed in on the admin screens. */
   SUPABASE_URL?: string;
+  /** The public "publishable" key (safe to publish, it is already in the website). Set in wrangler.jsonc. */
+  SUPABASE_PUBLISHABLE_KEY?: string;
   /** Used when a message does not name a currency, unit or minimum order. Set in wrangler.jsonc. */
   DEFAULT_CURRENCY?: string;
   DEFAULT_UNIT?: string;

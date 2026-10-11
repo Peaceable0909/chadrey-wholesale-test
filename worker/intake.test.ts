@@ -1,27 +1,52 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { stableUuid } from "./ids";
 import { handleUpdate } from "./intake";
-import { baseEnv, createBackend, deps, EXAMPLE_CAPTION, OWNER, photoUpdate, SERVICE_KEY, textUpdate, TOKEN, type Backend } from "./testkit";
+import { baseEnv, createBackend, deps, EXAMPLE_CAPTION, failingBucket, failingDatabase, OWNER, photoUpdate, textUpdate, TOKEN, type Backend } from "./testkit";
+import { createTestEnv, type TestEnv } from "./testEnv";
+import type { Env } from "./types";
 
+let test: TestEnv;
 let backend: Backend;
 let errors: ReturnType<typeof vi.spyOn>;
 
-beforeEach(() => {
+beforeAll(async () => {
+  test = await createTestEnv();
+}, 60_000);
+afterAll(() => test?.dispose());
+beforeEach(async () => {
+  await test.reset();
   backend = createBackend();
   errors = vi.spyOn(console, "error").mockImplementation(() => undefined);
 });
 afterEach(() => vi.restoreAllMocks());
 
-const run = (update: Parameters<typeof handleUpdate>[0], env = baseEnv(), extra?: Parameters<typeof deps>[1]) => handleUpdate(update, env, deps(backend, extra));
+const env = (overrides: Partial<Env> = {}) => baseEnv({ DB: test.env.DB, PHOTOS: test.env.PHOTOS, ...overrides });
+const run = (update: Parameters<typeof handleUpdate>[0], overrides: Partial<Env> = {}, extra?: Parameters<typeof deps>[1]) => handleUpdate(update, env(overrides), deps(backend, extra));
 const lastReply = () => backend.state.sent[backend.state.sent.length - 1]?.text ?? "";
-const products = () => Array.from(backend.state.products.values());
+
+/** Saved products in the order they were saved, with the stored lists and yes/no values turned back into real ones. */
+async function products() {
+  const rows = (await test.env.DB.prepare("SELECT * FROM products ORDER BY rowid").all()).results as Array<Record<string, any>>;
+  return rows.map(row => ({ ...row, is_active: row.is_active === 1, price_tiers: JSON.parse(row.price_tiers) }));
+}
+async function images() {
+  const rows = (await test.env.DB.prepare("SELECT * FROM product_images ORDER BY sort_order, rowid").all()).results as Array<Record<string, any>>;
+  return rows.map(row => ({ ...row, is_primary: row.is_primary === 1 }));
+}
+async function storedFiles() {
+  const listing = await (test.env.PHOTOS as any).list();
+  const files = [] as Array<{ key: string; size: number; httpMetadata?: { contentType?: string; cacheControl?: string } }>;
+  for (const object of listing.objects as Array<{ key: string }>) files.push((await test.env.PHOTOS.head(object.key))!);
+  return files;
+}
 
 describe("a photo with the details as its caption", () => {
   it("is saved as a hidden draft with the price at the minimum order", async () => {
     await run(photoUpdate(backend, { id: 10, caption: EXAMPLE_CAPTION }));
 
-    expect(products()).toHaveLength(1);
-    const product = products()[0];
-    expect(product).toMatchObject({
+    const saved = await products();
+    expect(saved).toHaveLength(1);
+    expect(saved[0]).toMatchObject({
       name: "100ml Original sugar marshmallow",
       slug: "100ml-original-sugar-marshmallow",
       category: "Uncategorised",
@@ -31,28 +56,27 @@ describe("a photo with the details as its caption", () => {
       price_unit: "pc",
       price_tiers: [{ min_qty: 1, price: 48000 }],
       description: "",
+      created_by: null,
     });
   });
 
   it("does not save the resell range on the product", async () => {
     await run(photoUpdate(backend, { id: 9, caption: EXAMPLE_CAPTION }));
-    expect(JSON.stringify(products()[0])).not.toMatch(/55,?000|60,?000|resale|resell/i);
+    expect(JSON.stringify((await products())[0])).not.toMatch(/55,?000|60,?000|resale|resell/i);
   });
 
   it("stores the biggest version of the photo and marks it as the main photo", async () => {
     await run(photoUpdate(backend, { id: 10, caption: EXAMPLE_CAPTION }));
 
-    const paths = Array.from(backend.state.storage.keys());
-    expect(paths).toEqual(["products/100ml-original-sugar-marshmallow/uniq10.jpg"]);
-    expect(backend.state.storage.get(paths[0])).toMatchObject({ contentType: "image/jpeg", upsert: "false", size: 4096 });
-    expect(backend.state.images).toHaveLength(1);
-    expect(backend.state.images[0]).toMatchObject({
-      product_id: products()[0].id,
-      storage_path: paths[0],
-      public_url: "https://proj.supabase.co/storage/v1/object/public/product-images/products/100ml-original-sugar-marshmallow/uniq10.jpg",
-      is_primary: true,
-      sort_order: 10,
-    });
+    const [product] = await products();
+    const imageId = await stableUuid(`image:${product.id}:uniq10`);
+    const key = `products/${product.id}/${imageId}.jpg`;
+    const files = await storedFiles();
+    expect(files.map(file => file.key)).toEqual([key]);
+    expect(files[0]).toMatchObject({ size: 4096, httpMetadata: { contentType: "image/jpeg", cacheControl: "public, max-age=31536000, immutable" } });
+    expect(await images()).toMatchObject([
+      { id: imageId, product_id: product.id, storage_path: key, is_primary: true, sort_order: 10, alt_text: "100ml Original sugar marshmallow product image", content_type: "image/jpeg", size_bytes: 4096 },
+    ]);
     // The small thumbnail was never downloaded.
     expect(backend.state.requests.some(request => request.url.includes("small-10"))).toBe(false);
   });
@@ -69,19 +93,20 @@ describe("a photo with the details as its caption", () => {
     expect(text).toContain("Resell range: ₦55,000 – ₦60,000 (not saved on the product)");
     expect(text).toContain("Category: Uncategorised (set it in admin)");
     expect(text).toContain("Review it: https://shop.test/admin/products?status=hidden");
-    expect(text).toContain(`Draft ID: ${products()[0].id}`);
+    expect(text).toContain(`Draft ID: ${(await products())[0].id}`);
+    expect(text).not.toMatch(/supabase/i);
   });
 
   it("uses the minimum order, unit, currency and category written in the message", async () => {
     await run(photoUpdate(backend, { id: 11, caption: "Soap bar\n#Beauty\nMOQ 24\n600 per dozen wholesale\n$1.5 retail" }));
-    expect(products()[0]).toMatchObject({ category: "Beauty", moq: 24, price_unit: "dozen", price_currency: "USD", price_tiers: [{ min_qty: 24, price: 600 }] });
+    expect((await products())[0]).toMatchObject({ category: "Beauty", moq: 24, price_unit: "dozen", price_currency: "USD", price_tiers: [{ min_qty: 24, price: 600 }] });
   });
 
   it("is saved without a price when the message has none, and says so", async () => {
     await run(photoUpdate(backend, { id: 12, caption: "Rattan basket" }));
-    const product = products()[0];
+    const [product] = await products();
     expect(product.is_active).toBe(false);
-    expect("price_tiers" in product).toBe(false);
+    expect(product.price_tiers).toEqual([]);
     expect(lastReply()).toContain("No price yet");
     expect(lastReply()).toContain("No price was found.");
   });
@@ -90,27 +115,25 @@ describe("a photo with the details as its caption", () => {
     const update = photoUpdate(backend, { id: 13, caption: EXAMPLE_CAPTION });
     await run(update);
     await run(update);
-    expect(products()).toHaveLength(1);
-    expect(backend.state.images).toHaveLength(1);
-    expect(backend.state.storage.size).toBe(1);
+    expect(await products()).toHaveLength(1);
+    expect(await images()).toHaveLength(1);
+    expect(await storedFiles()).toHaveLength(1);
   });
 
   it("gives a repeat name a new web address and mentions the existing product", async () => {
     await run(photoUpdate(backend, { id: 14, caption: EXAMPLE_CAPTION }));
     await run(photoUpdate(backend, { id: 15, caption: EXAMPLE_CAPTION }));
-    expect(products().map(product => product.slug)).toEqual(["100ml-original-sugar-marshmallow", "100ml-original-sugar-marshmallow-2"]);
+    expect((await products()).map(product => product.slug)).toEqual(["100ml-original-sugar-marshmallow", "100ml-original-sugar-marshmallow-2"]);
     expect(lastReply()).toContain("ℹ️ You already have “100ml Original sugar marshmallow” (hidden).");
   });
 
   it("tries again with a new web address when another save took it first", async () => {
-    backend.state.failNext = {
-      match: (method, path) => method === "POST" && path === "/rest/v1/products",
-      status: 409,
-      body: { code: "23505", details: "Key (slug)=(taken) already exists.", hint: null, message: 'duplicate key value violates unique constraint "products_slug_key"' },
-    };
-    await run(photoUpdate(backend, { id: 16, caption: EXAMPLE_CAPTION }));
-    expect(products()).toHaveLength(1);
-    expect(String(products()[0].slug)).toMatch(/^100ml-original-sugar-marshmallow-[a-z0-9]{1,4}$/);
+    const racing = failingDatabase(test.env.DB, sql => sql.startsWith("INSERT INTO products"), new Error("D1_ERROR: UNIQUE constraint failed: products.slug: SQLITE_CONSTRAINT_UNIQUE"), { times: 1 });
+    await run(photoUpdate(backend, { id: 16, caption: EXAMPLE_CAPTION }), { DB: racing });
+    expect(racing.failures).toBe(1);
+    const saved = await products();
+    expect(saved).toHaveLength(1);
+    expect(String(saved[0].slug)).toMatch(/^100ml-original-sugar-marshmallow-[a-z0-9]{1,4}$/);
     expect(lastReply()).toContain("✅ Saved as a hidden draft");
   });
 
@@ -125,8 +148,18 @@ describe("a photo with the details as its caption", () => {
       document: { file_id: "doc-1", file_unique_id: "docuniq", mime_type: "image/png", file_size: 3000 },
     };
     await run(update);
-    expect(Array.from(backend.state.storage.keys())).toEqual(["products/100ml-original-sugar-marshmallow/docuniq.png"]);
-    expect(backend.state.storage.get("products/100ml-original-sugar-marshmallow/docuniq.png")?.contentType).toBe("image/png");
+    const [product] = await products();
+    const imageId = await stableUuid(`image:${product.id}:docuniq`);
+    const files = await storedFiles();
+    expect(files.map(file => file.key)).toEqual([`products/${product.id}/${imageId}.png`]);
+    expect(files[0].httpMetadata?.contentType).toBe("image/png");
+  });
+
+  it("keeps long text within what the shop accepts", async () => {
+    await run(photoUpdate(backend, { id: 18, caption: `${"A very long name ".repeat(30)}\n48,000 wholesale` }));
+    const [product] = await products();
+    expect(product.name.length).toBeLessThanOrEqual(200);
+    expect(product.slug.length).toBeLessThanOrEqual(90);
   });
 });
 
@@ -139,21 +172,21 @@ describe("categories", () => {
 
   it("guesses the category from a similar product and says where the guess came from", async () => {
     await run(photoUpdate(backend, { id: 22, caption: EXAMPLE_CAPTION }));
-    const draft = products().find(product => product.name === "100ml Original sugar marshmallow");
+    const draft = (await products()).find(product => product.name === "100ml Original sugar marshmallow");
     expect(draft?.category).toBe("Beauty");
     expect(lastReply()).toContain("Category: Beauty (guessed from “Sugar marshmallow body mist 250ml”)");
   });
 
   it("keeps a category typed in the message, spelled like the existing one", async () => {
     await run(photoUpdate(backend, { id: 23, caption: "Silk scarf\n#bags\n5,000 wholesale" }));
-    const draft = products().find(product => product.name === "Silk scarf");
+    const draft = (await products()).find(product => product.name === "Silk scarf");
     expect(draft?.category).toBe("Bags");
     expect(lastReply()).toContain("Category: Bags\n");
   });
 
   it("leaves a product with nothing in common as Uncategorised", async () => {
     await run(photoUpdate(backend, { id: 24, caption: "Garden hose reel\n9,000 wholesale" }));
-    expect(products().find(product => product.name === "Garden hose reel")?.category).toBe("Uncategorised");
+    expect((await products()).find(product => product.name === "Garden hose reel")?.category).toBe("Uncategorised");
   });
 });
 
@@ -163,8 +196,8 @@ describe("albums and extra photos", () => {
     await run(photoUpdate(backend, { id: 31, group: "album-1" }));
     await run(photoUpdate(backend, { id: 32, group: "album-1" }));
 
-    expect(products()).toHaveLength(1);
-    expect(backend.state.images.map(image => [image.sort_order, image.is_primary])).toEqual([
+    expect(await products()).toHaveLength(1);
+    expect((await images()).map(image => [image.sort_order, image.is_primary])).toEqual([
       [30, true],
       [31, false],
       [32, false],
@@ -175,19 +208,19 @@ describe("albums and extra photos", () => {
 
   it("waits for the first photo if an album member arrives before it", async () => {
     const sleep = vi.fn(async () => {
-      if (!products().length) await run(photoUpdate(backend, { id: 40, caption: EXAMPLE_CAPTION, group: "album-2" }));
+      if (!(await products()).length) await run(photoUpdate(backend, { id: 40, caption: EXAMPLE_CAPTION, group: "album-2" }));
     });
-    await run(photoUpdate(backend, { id: 41, group: "album-2" }), baseEnv(), { sleep });
+    await run(photoUpdate(backend, { id: 41, group: "album-2" }), {}, { sleep });
     expect(sleep).toHaveBeenCalledTimes(1);
-    expect(products()).toHaveLength(1);
-    expect(backend.state.images).toHaveLength(2);
+    expect(await products()).toHaveLength(1);
+    expect(await images()).toHaveLength(2);
   });
 
   it("gives up with a clear message when an album never gets a caption", async () => {
     const sleep = vi.fn(async () => undefined);
-    await run(photoUpdate(backend, { id: 42, group: "album-3" }), baseEnv(), { sleep });
+    await run(photoUpdate(backend, { id: 42, group: "album-3" }), {}, { sleep });
     expect(sleep).toHaveBeenCalledTimes(3);
-    expect(products()).toHaveLength(0);
+    expect(await products()).toHaveLength(0);
     expect(lastReply()).toContain("Put the name and prices in the caption of the first photo.");
   });
 
@@ -196,24 +229,33 @@ describe("albums and extra photos", () => {
     const confirmation = lastReply();
     await run(photoUpdate(backend, { id: 51, replyToText: confirmation }));
 
-    expect(backend.state.images).toHaveLength(2);
-    expect(backend.state.images[1]).toMatchObject({ is_primary: false, sort_order: 51 });
+    const saved = await images();
+    expect(saved).toHaveLength(2);
+    expect(saved[1]).toMatchObject({ is_primary: false, sort_order: 51 });
     expect(lastReply()).toContain("📷 Added to “100ml Original sugar marshmallow”. It now has 2 photos.");
+  });
+
+  it("never gives a draft two main photos, however the photos arrive", async () => {
+    await run(photoUpdate(backend, { id: 58, caption: EXAMPLE_CAPTION, group: "album-4" }));
+    await Promise.all([run(photoUpdate(backend, { id: 59, group: "album-4" })), run(photoUpdate(backend, { id: 60, group: "album-4" })), run(photoUpdate(backend, { id: 61, group: "album-4" }))]);
+    const saved = await images();
+    expect(saved).toHaveLength(4);
+    expect(saved.filter(image => image.is_primary)).toHaveLength(1);
   });
 
   it("will not touch a product that is already live", async () => {
     await run(photoUpdate(backend, { id: 52, caption: EXAMPLE_CAPTION }));
     const confirmation = lastReply();
-    products()[0].is_active = true;
+    await test.env.DB.prepare("UPDATE products SET is_active = 1").run();
     await run(photoUpdate(backend, { id: 53, replyToText: confirmation }));
-    expect(backend.state.images).toHaveLength(1);
+    expect(await images()).toHaveLength(1);
     expect(lastReply()).toContain("already live");
   });
 
   it("says so when the draft was deleted", async () => {
     await run(photoUpdate(backend, { id: 54, caption: EXAMPLE_CAPTION }));
     const confirmation = lastReply();
-    backend.state.products.clear();
+    await test.env.DB.batch([test.env.DB.prepare("DELETE FROM product_images"), test.env.DB.prepare("DELETE FROM products")]);
     await run(photoUpdate(backend, { id: 55, replyToText: confirmation }));
     expect(lastReply()).toContain("couldn't find that draft");
   });
@@ -222,23 +264,24 @@ describe("albums and extra photos", () => {
     await run(photoUpdate(backend, { id: 56, caption: EXAMPLE_CAPTION }));
     const confirmation = lastReply();
     await run(photoUpdate(backend, { id: 57, replyToText: confirmation, replyFromBot: false, caption: "Silk scarf\n5,000 wholesale" }));
-    expect(products()).toHaveLength(2);
-    expect(backend.state.images).toHaveLength(2);
+    expect(await products()).toHaveLength(2);
+    expect(await images()).toHaveLength(2);
   });
 });
 
 describe("who and what the bot answers", () => {
   it("tells a stranger their Telegram id and saves nothing", async () => {
     await run(photoUpdate(backend, { id: 60, caption: EXAMPLE_CAPTION, from: 777 }));
-    expect(products()).toHaveLength(0);
-    expect(backend.state.storage.size).toBe(0);
-    expect(backend.state.requests.every(request => !request.url.includes("supabase.co"))).toBe(true);
+    expect(await products()).toHaveLength(0);
+    expect(await storedFiles()).toHaveLength(0);
+    // The only thing sent was the reply: the stranger's photo was never even downloaded.
+    expect(backend.state.requests.map(request => new URL(request.url).pathname.split("/").pop())).toEqual(["sendMessage"]);
     expect(lastReply()).toContain("Your Telegram ID is 777");
   });
 
   it("answers every allowed person, not only the first", async () => {
     await run(photoUpdate(backend, { id: 61, caption: EXAMPLE_CAPTION, from: 1002 }));
-    expect(products()).toHaveLength(1);
+    expect(await products()).toHaveLength(1);
   });
 
   it("ignores group chats, bots and updates without a message", async () => {
@@ -261,70 +304,50 @@ describe("who and what the bot answers", () => {
 
   it("asks for the caption when a photo comes with none", async () => {
     await run(photoUpdate(backend, { id: 63 }));
-    expect(products()).toHaveLength(0);
+    expect(await products()).toHaveLength(0);
     expect(lastReply()).toContain("Add the product details as the photo's caption");
   });
 
   it("asks for a name when the caption only has prices", async () => {
     await run(photoUpdate(backend, { id: 64, caption: "48,000 wholesale" }));
-    expect(products()).toHaveLength(0);
+    expect(await products()).toHaveLength(0);
     expect(lastReply()).toContain("couldn't find a product name");
   });
 
   it("refuses a photo over 10 MB", async () => {
     const sizes = [{ file_id: "huge", file_unique_id: "huge", width: 4000, height: 4000, file_size: 11 * 1024 * 1024 }];
     await run(photoUpdate(backend, { id: 65, caption: EXAMPLE_CAPTION, sizes }));
-    expect(products()).toHaveLength(0);
+    expect(await products()).toHaveLength(0);
     expect(lastReply()).toContain("larger than 10 MB");
   });
 });
 
-describe("when the database is not ready", () => {
-  it("keeps the price in the description when the price columns do not exist yet", async () => {
-    backend = createBackend({ pricingColumns: false });
-    await run(photoUpdate(backend, { id: 70, caption: EXAMPLE_CAPTION }));
-
-    expect(products()).toHaveLength(1);
-    const product = products()[0];
-    expect("price_tiers" in product).toBe(false);
-    expect(product.description).toBe("Wholesale price: ₦48,000 per pc");
-    expect(lastReply()).toContain("(price not saved, see below)");
-    expect(lastReply()).toContain("supabase_product_pricing.sql");
-    expect(backend.state.images).toHaveLength(1);
-  });
-
-  it("still saves a price-less product without needing the price columns", async () => {
-    backend = createBackend({ pricingColumns: false });
-    await run(photoUpdate(backend, { id: 71, caption: "Rattan basket" }));
-    expect(products()).toHaveLength(1);
-    expect(lastReply()).not.toContain("supabase_product_pricing.sql");
-  });
-});
-
 describe("when something goes wrong", () => {
-  it("explains a refused Supabase key without showing the key", async () => {
-    await run(photoUpdate(backend, { id: 80, caption: EXAMPLE_CAPTION }), baseEnv({ SUPABASE_SERVICE_KEY: "sb_secret_WRONG_KEY_VALUE" }));
-    expect(lastReply()).toContain("Supabase refused the key");
-    expect(lastReply()).toContain("SUPABASE_SERVICE_KEY");
-    expect(lastReply()).not.toContain("WRONG_KEY_VALUE");
-    expect(JSON.stringify(errors.mock.calls)).not.toContain("WRONG_KEY_VALUE");
-  });
-
-  it("explains a missing storage bucket", async () => {
-    backend.state.bucketMissing = true;
-    await run(photoUpdate(backend, { id: 81, caption: EXAMPLE_CAPTION }));
-    // The draft exists, but the photo could not be stored.
-    expect(products()).toHaveLength(1);
+  it("keeps the draft when the photo cannot be stored", async () => {
+    await run(photoUpdate(backend, { id: 81, caption: EXAMPLE_CAPTION }), { PHOTOS: failingBucket(test.env.PHOTOS, new Error("R2 is down")) });
+    const [product] = await products();
+    expect(product).toBeDefined();
+    expect(await images()).toHaveLength(0);
     expect(lastReply()).toContain("the photo did not upload");
     expect(lastReply()).toContain("Reply to this message with the photo");
-    expect(lastReply()).toContain(`Draft ID: ${products()[0].id}`);
+    expect(lastReply()).toContain(`Draft ID: ${product.id}`);
   });
 
   it("keeps the draft when the photo cannot be downloaded from Telegram", async () => {
     backend.state.failDownload = true;
     await run(photoUpdate(backend, { id: 82, caption: EXAMPLE_CAPTION }));
-    expect(products()).toHaveLength(1);
-    expect(backend.state.images).toHaveLength(0);
+    expect(await products()).toHaveLength(1);
+    expect(await images()).toHaveLength(0);
+    expect(lastReply()).toContain("the photo did not upload");
+  });
+
+  it("keeps the draft, and stores nothing, when the file is not really a picture", async () => {
+    backend.addTelegramFile("fake", 100, "documents/fake.png", new TextEncoder().encode("<html>not a picture</html>"));
+    const update = textUpdate("");
+    update.message = { message_id: 19, from: { id: OWNER }, chat: { id: OWNER, type: "private" }, caption: EXAMPLE_CAPTION, document: { file_id: "fake", file_unique_id: "fakeuniq", mime_type: "image/png", file_size: 100 } };
+    await run(update);
+    expect(await products()).toHaveLength(1);
+    expect(await storedFiles()).toHaveLength(0);
     expect(lastReply()).toContain("the photo did not upload");
   });
 
@@ -334,56 +357,48 @@ describe("when something goes wrong", () => {
     const confirmation = lastReply();
     backend.state.failDownload = false;
     await run(photoUpdate(backend, { id: 84, replyToText: confirmation }));
-    expect(backend.state.images).toHaveLength(1);
-    expect(backend.state.images[0].is_primary).toBe(true);
+    const saved = await images();
+    expect(saved).toHaveLength(1);
+    expect(saved[0].is_primary).toBe(true);
+  });
+
+  it("tells the person when the shop's database has used up its free allowance", async () => {
+    const full = failingDatabase(test.env.DB, sql => sql.startsWith("INSERT INTO products"), new Error("D1_ERROR: Your account has exceeded D1's free tier daily row write limit. Upgrade to a paid plan or wait until tomorrow (midnight UTC) to continue."));
+    await run(photoUpdate(backend, { id: 85, caption: EXAMPLE_CAPTION }), { DB: full });
+    expect(await products()).toHaveLength(0);
+    expect(lastReply()).toContain("midnight UTC");
+    expect(lastReply()).toContain("send it again");
   });
 
   it("reports an unexpected database error without details", async () => {
-    backend.state.failNext = { match: (method, path) => method === "POST" && path === "/rest/v1/products", status: 500, body: { message: "boom internal detail" } };
-    await run(photoUpdate(backend, { id: 85, caption: EXAMPLE_CAPTION }));
-    expect(products()).toHaveLength(0);
-    expect(lastReply()).toContain("Supabase returned an error (status 500)");
+    const broken = failingDatabase(test.env.DB, sql => sql.startsWith("INSERT INTO products"), new Error("boom internal detail"));
+    await run(photoUpdate(backend, { id: 86, caption: EXAMPLE_CAPTION }), { DB: broken });
+    expect(await products()).toHaveLength(0);
+    expect(lastReply()).toContain("Something went wrong while saving that");
     expect(lastReply()).not.toContain("boom");
+    expect(JSON.stringify(errors.mock.calls)).toContain("boom");
   });
 
-  it("never puts the bot token or the Supabase key in a reply or a log line", async () => {
+  it("never puts the bot token in a reply or a log line", async () => {
     backend.state.failDownload = true;
-    await run(photoUpdate(backend, { id: 86, caption: EXAMPLE_CAPTION }));
-    await run(photoUpdate(backend, { id: 87, caption: EXAMPLE_CAPTION }), baseEnv({ SUPABASE_SERVICE_KEY: "sb_secret_other" }));
+    await run(photoUpdate(backend, { id: 87, caption: EXAMPLE_CAPTION }));
     const everything = JSON.stringify([backend.state.sent, errors.mock.calls]);
     expect(everything).not.toContain(TOKEN);
-    expect(everything).not.toContain(SERVICE_KEY);
-    expect(everything).not.toContain("sb_secret_other");
   });
 });
 
-describe("how the database is called", () => {
-  it("sends the new-style secret key in apikey only", async () => {
-    await run(photoUpdate(backend, { id: 90, caption: EXAMPLE_CAPTION }));
-    const supabaseCalls = backend.state.requests.filter(request => request.url.includes("supabase.co"));
-    expect(supabaseCalls.length).toBeGreaterThan(3);
-    expect(supabaseCalls.every(request => request.headers.apikey === SERVICE_KEY && request.headers.authorization === undefined)).toBe(true);
+describe("what the bot needs", () => {
+  it("works without any Supabase key or address", async () => {
+    await run(photoUpdate(backend, { id: 90, caption: EXAMPLE_CAPTION }), { SUPABASE_URL: undefined, SUPABASE_PUBLISHABLE_KEY: undefined });
+    expect(await products()).toHaveLength(1);
+    expect(backend.state.requests.every(request => request.url.startsWith("https://api.telegram.org/"))).toBe(true);
   });
 
-  it("also sends an older JWT-style key as a bearer token", async () => {
-    const jwtLike = "eyJhbGciOiJIUzI1NiJ9.payload.signature";
-    const jwtBackend = createBackend();
-    const original = jwtBackend.fetch;
-    const seen: Array<Record<string, string>> = [];
-    const wrapped = (async (input: RequestInfo | URL, init?: RequestInit) => {
-      const headers = Object.fromEntries(Object.entries((init?.headers ?? {}) as Record<string, string>).map(([name, value]) => [name.toLowerCase(), value]));
-      if (String(input).includes("supabase.co")) seen.push(headers);
-      // Pretend the older key is the valid one.
-      const patched = { ...init, headers: { ...(init?.headers as Record<string, string>), apikey: SERVICE_KEY } };
-      return original(input, String(input).includes("supabase.co") ? patched : init);
-    }) as typeof fetch;
-    await handleUpdate(photoUpdate(jwtBackend, { id: 91, caption: EXAMPLE_CAPTION }), baseEnv({ SUPABASE_SERVICE_KEY: jwtLike }), { fetch: wrapped, sleep: async () => undefined, origin: "https://shop.test" });
-    expect(seen.length).toBeGreaterThan(0);
-    expect(seen.every(headers => headers.apikey === jwtLike && headers.authorization === `Bearer ${jwtLike}`)).toBe(true);
-  });
-
-  it("gives photos a long cache time because each file name is unique", async () => {
-    await run(photoUpdate(backend, { id: 92, caption: EXAMPLE_CAPTION }));
-    expect(Array.from(backend.state.storage.values())[0].cacheControl).toBe("max-age=31536000");
+  it("sets up a brand-new database by itself on first use", async () => {
+    const fresh = createBackend();
+    await handleUpdate(photoUpdate(fresh, { id: 91, caption: EXAMPLE_CAPTION }), env({ DB: test.freshDb }), deps(fresh));
+    const saved = await test.freshDb.prepare("SELECT name, is_active FROM products").all();
+    expect(saved.results).toEqual([{ name: "100ml Original sugar marshmallow", is_active: 0 }]);
+    await test.freshDb.batch([test.freshDb.prepare("DELETE FROM product_images"), test.freshDb.prepare("DELETE FROM products")]);
   });
 });
