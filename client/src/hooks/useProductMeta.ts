@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import type { Product } from "@/lib/catalogue";
+import { photoSrc } from "@/lib/photos";
 import { productHref } from "@/lib/productRoute";
 import { siteConfig } from "@/lib/siteConfig";
 
@@ -19,7 +20,8 @@ export function useProductMeta(product: Product | null) {
   useEffect(() => {
     if (!product) return;
     const url = new URL(productHref(product.slug), window.location.origin).toString();
-    const image = product.images[0]?.url || new URL("/og-product.svg", window.location.origin).toString();
+    const cover = product.images[0]?.url;
+    const image = new URL(cover ? photoSrc(cover, 1280) : "/og-product.svg", window.location.origin).toString();
     const description = product.summary || `${product.name} from ${siteConfig.name}`;
     document.title = `${product.name} | ${siteConfig.name}`;
     setMeta("description", description);

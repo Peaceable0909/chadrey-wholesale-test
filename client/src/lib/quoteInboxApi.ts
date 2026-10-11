@@ -1,5 +1,5 @@
-import { mapProductRow, type Product } from "@/lib/catalogue";
-import { PRODUCT_SELECT } from "@/lib/catalogueApi";
+import type { Product } from "@/lib/catalogue";
+import { fetchAdminProductsByIds } from "@/lib/catalogueApi";
 import { getSupabaseClient } from "@/lib/supabase";
 
 export type InboxItem = {
@@ -50,10 +50,8 @@ export async function fetchQuoteInbox(): Promise<InboxRequest[]> {
   if (itemResult.error) throw itemResult.error;
   const items = (itemResult.data ?? []) as Array<Omit<InboxItem, "product">>;
 
-  const productIds = Array.from(new Set(items.map(item => item.product_id)));
-  const productResult = productIds.length ? await client.from("products").select(PRODUCT_SELECT).in("id", productIds) : { data: [], error: null };
-  if (productResult.error) throw productResult.error;
-  const products = new Map((productResult.data ?? []).map((row: any) => [String(row.id), mapProductRow(row)]));
+  // Products now live in the shop's own database, not next to the quote requests, so they are looked up by id.
+  const products = new Map((await fetchAdminProductsByIds(items.map(item => item.product_id))).map(product => [product.id, product]));
 
   const byRequest = new Map<string, InboxItem[]>();
   for (const item of items) {

@@ -1,6 +1,7 @@
 import * as React from "react";
 import { categoryMeta } from "@/lib/categories";
 import type { Product } from "@/lib/catalogue";
+import { photoAttributes, type PhotoVariant } from "@/lib/photos";
 import { cn } from "@/lib/utils";
 import { toneText, toneWash } from "@/components/ios/tone";
 
@@ -51,12 +52,14 @@ type ProductImageProps = {
   margin?: string;
   /** Wait before loading, even when on screen, e.g. thumbnails that should follow the main photo. */
   hold?: boolean;
+  /** How big the photo is shown, so the browser downloads a copy of about that size: a small thumbnail, a card in a grid, or the main picture of a page. */
+  variant?: PhotoVariant;
   /** Called once the photo has loaded. */
   onLoaded?: () => void;
 };
 
 /** The product photo, or a soft category-coloured tile when the product has none yet or the photo cannot be loaded. */
-export function ProductImage({ product, index = 0, className, fit = "cover", priority = false, margin = "150px", hold = false, onLoaded }: ProductImageProps) {
+export function ProductImage({ product, index = 0, className, fit = "cover", priority = false, margin = "150px", hold = false, variant = "card", onLoaded }: ProductImageProps) {
   const image = product.images[index];
   const [brokenUrl, setBrokenUrl] = React.useState<string | null>(null);
   const [near, setNear] = React.useState(priority || typeof IntersectionObserver === "undefined");
@@ -71,7 +74,7 @@ export function ProductImage({ product, index = 0, className, fit = "cover", pri
     if (!near || hold) return <div ref={holder} aria-hidden className={cn("size-full bg-fill-4", className)} />;
     return (
       <img
-        src={image.url}
+        {...photoAttributes(image.url, variant)}
         alt={image.alt || (image.label ? `${product.name} – ${image.label}` : product.name)}
         decoding="async"
         fetchPriority={priority ? "high" : undefined}

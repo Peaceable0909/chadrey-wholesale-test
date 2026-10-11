@@ -7,6 +7,7 @@ import { useAuth } from "@/_core/hooks/useAuth";
 import { BulkBar } from "@/components/admin/BulkBar";
 import { BulkCategorySheet } from "@/components/admin/BulkCategorySheet";
 import { ConfirmSheet } from "@/components/admin/ConfirmSheet";
+import { LegacyCopyCard } from "@/components/admin/LegacyCopyCard";
 import { ProductEditor } from "@/components/admin/ProductEditor";
 import { Badge, Button, ButtonLink, Card, EmptyState, Notice, SearchField, SegmentedControl, Switch } from "@/components/ios";
 import { AdminLayout } from "@/components/layout/AdminLayout";
@@ -49,7 +50,7 @@ function AdminProductRow({ product, active, selecting, picked, onOpen, onToggle,
   const summary = (
     <>
       <span className={cn("size-14 shrink-0 overflow-hidden rounded-[12px] bg-fill-4", !active && "opacity-50")}>
-        <ProductImage product={product} />
+        <ProductImage product={product} variant="thumb" />
       </span>
       <span className="min-w-0 flex-1">
         <span className="line-clamp-2 block text-body font-semibold leading-snug">{product.name}</span>
@@ -271,6 +272,7 @@ export default function AdminProducts() {
         </ButtonLink>
       }>
       <div className={cn("space-y-4", selecting && split.total > 0 && "pb-28")}>
+        <LegacyCopyCard enabled={isAdmin} />
         <div className="flex flex-col gap-3 md:flex-row md:items-center">
           <SearchField value={search} onValueChange={setSearch} placeholder="Search by name or category" wrapperClassName="md:flex-1" />
           <SegmentedControl

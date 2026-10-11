@@ -31,7 +31,7 @@ export function QuoteLineCard({ line, index, canRemove, onChange, onRemove, onCh
     <Card className="overflow-hidden">
       <div className="flex items-start gap-3 p-4">
         <span className="size-16 shrink-0 overflow-hidden rounded-[14px] bg-fill-4">
-          <ProductImage product={product} />
+          <ProductImage product={product} variant="thumb" />
         </span>
         <div className="min-w-0 flex-1">
           <p className="text-caption font-semibold uppercase tracking-wider text-label-2">Item {index + 1}</p>
@@ -107,7 +107,7 @@ export function QuoteLineCard({ line, index, canRemove, onChange, onRemove, onCh
                     aria-label={image.label || `Photo ${position + 1}`}
                     onClick={() => togglePhoto(image.id)}
                     className={cn("press relative size-[68px] shrink-0 overflow-hidden rounded-[14px] bg-fill-4 transition-opacity", selected ? "ring-2 ring-tint ring-offset-2 ring-offset-surface" : "opacity-70")}>
-                    <ProductImage product={product} index={position} />
+                    <ProductImage product={product} index={position} variant="thumb" />
                     {selected && (
                       <span className="absolute bottom-1 right-1 grid size-5 place-items-center rounded-full bg-tint text-white">
                         <Check className="size-3" strokeWidth={3.5} />

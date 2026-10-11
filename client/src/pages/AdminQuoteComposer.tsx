@@ -8,7 +8,8 @@ import { AdminLayout } from "@/components/layout/AdminLayout";
 import { CenteredState } from "@/components/layout/PageState";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import { useScrollTopWhen } from "@/hooks/useScrollTopWhen";
-import { mapProductRow, type Product } from "@/lib/catalogue";
+import type { Product } from "@/lib/catalogue";
+import { fetchAdminProductsByIds } from "@/lib/catalogueApi";
 import { formatMoney, formatQty } from "@/lib/format";
 import { lineTotal } from "@/lib/pricing";
 import { getSupabaseClient } from "@/lib/supabase";
@@ -21,13 +22,13 @@ async function fetchComposerData(quoteRequestId: string): Promise<{ request: Req
   const client = getSupabaseClient();
   const [requestResult, itemResult] = await Promise.all([
     client.from("quote_requests").select("id,ref,status,company_name,contact_email,requirements").eq("id", quoteRequestId).single(),
-    client.from("quote_request_items").select("quantity,products(*)").eq("quote_request_id", quoteRequestId),
+    client.from("quote_request_items").select("quantity,product_id").eq("quote_request_id", quoteRequestId),
   ]);
   if (requestResult.error) throw requestResult.error;
-  const lines = ((itemResult.data ?? []) as any[]).map(item => {
-    const row = Array.isArray(item.products) ? item.products[0] : item.products;
-    return { quantity: item.quantity as number, product: row ? mapProductRow(row) : null };
-  });
+  const items = (itemResult.data ?? []) as Array<{ quantity: number; product_id: string }>;
+  // Products live in the shop's own database, so they are looked up by id.
+  const products = new Map((await fetchAdminProductsByIds(items.map(item => item.product_id))).map(product => [product.id, product]));
+  const lines = items.map(item => ({ quantity: item.quantity, product: products.get(item.product_id) ?? null }));
   return { request: requestResult.data as RequestSummary, lines };
 }
 

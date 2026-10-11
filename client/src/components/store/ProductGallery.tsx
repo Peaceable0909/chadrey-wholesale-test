@@ -51,7 +51,7 @@ export function ProductGallery({ product, className, rounded = true, compact = f
           {Array.from({ length: count }, (_, position) => (
             <div key={position} className={cn("w-full shrink-0 snap-center", compact ? "aspect-[4/3]" : "aspect-square")} aria-label={`Photo ${position + 1} of ${count}`}>
               {/* Only the first photo and the next one (one screen to the right) are requested up front. */}
-              <ProductImage product={product} index={position} fit="contain" priority={position === 0} margin="0px 100% 0px 100%" onLoaded={position === 0 ? () => setMainLoaded(true) : undefined} />
+              <ProductImage product={product} index={position} fit="contain" variant="main" priority={position === 0} margin="0px 100% 0px 100%" onLoaded={position === 0 ? () => setMainLoaded(true) : undefined} />
             </div>
           ))}
         </div>
@@ -85,7 +85,7 @@ export function ProductGallery({ product, className, rounded = true, compact = f
                 "press size-[68px] shrink-0 overflow-hidden rounded-[14px] bg-surface ring-offset-2 ring-offset-canvas transition-shadow",
                 position === index ? "ring-2 ring-tint" : "opacity-80 hover:opacity-100",
               )}>
-              <ProductImage product={product} index={position} margin="0px" hold={!mainLoaded} />
+              <ProductImage product={product} index={position} variant="thumb" margin="0px" hold={!mainLoaded} />
             </button>
           ))}
         </div>

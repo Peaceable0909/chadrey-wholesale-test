@@ -1,8 +1,8 @@
 {
-  // Cloudflare Workers config. The site is a static single-page app built into dist/public.
+  // Cloudflare Workers config. The site is a static single-page app built into dist/public, plus a small Worker
+  // that holds the shop's products and photos (see docs/cloudflare-store.md) and the Telegram product intake.
   // The name must match the Worker connected in the Cloudflare dashboard.
   "name": "chadrey-wholesale",
-  // The Telegram product intake (see docs/telegram-product-intake.md). It only answers /api/telegram.
   "main": "worker/index.ts",
   "compatibility_date": "2025-09-01",
   // Cloudflare runs this before every deploy, so it does not depend on a build command set in the dashboard.
@@ -16,14 +16,36 @@
     "not_found_handling": "single-page-application",
     // The build also writes a folder per page (/products/index.html). Serve those at /products with no redirect to /products/.
     "html_handling": "drop-trailing-slash",
-    // Only this one address wakes the Worker. Every other address (including /api/trpc, used by older pages) is
-    // served straight from the files above, exactly as before.
-    "run_worker_first": ["/api/telegram"]
+    // Only these addresses wake the Worker: the bot, the shop's data, and product photos. Every other address
+    // (all the website files, and /api/trpc used by older pages) is served straight from the files above, free and fast.
+    "run_worker_first": ["/api/telegram", "/api/catalogue/*", "/api/admin/*", "/photos/*"]
   },
-  // Public settings only. The bot token, webhook secret, allowed Telegram ids and the Supabase key are NOT here:
+  // The shop's products and photo records.
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "chadrey-store",
+      "database_id": "435217ea-d633-4560-a5a6-d2b071d139f6"
+    }
+  ],
+  // The shop's photo files.
+  "r2_buckets": [
+    {
+      "binding": "PHOTOS",
+      "bucket_name": "chadrey-store-photos"
+    }
+  ],
+  // Makes smaller copies of photos so catalogue pages load fast (free for the first 5,000 copies a month).
+  "images": {
+    "binding": "IMAGES"
+  },
+  // Public settings only. The bot token, the webhook secret and the allowed Telegram ids are NOT here:
   // they are added in the Cloudflare dashboard as type "Secret" (Workers & Pages > chadrey-wholesale > Settings > Variables and Secrets).
   "vars": {
+    // Sign-in still lives in Supabase for now. The Worker uses these two public values to ask Supabase whether
+    // the person changing the shop is an administrator. The key is the same public key the website already contains.
     "SUPABASE_URL": "https://pysfxmosoijbghfzfhge.supabase.co",
+    "SUPABASE_PUBLISHABLE_KEY": "sb_publishable_1JpYRy4J3SguN2VIiqV4GQ_AI0LYEhV",
     // Used when a Telegram message does not name a currency, a unit or a minimum order.
     "DEFAULT_CURRENCY": "NGN",
     "DEFAULT_UNIT": "pc",
@@ -36,7 +58,29 @@
   "observability": {
     "enabled": true
   },
-  // Branch builds run "wrangler preview". Previews do not inherit the settings or secrets above, on purpose: the website
-  // works the same on a preview, but the Telegram bot is not configured there, so a branch preview can never reach the real shop.
-  "previews": {}
+  // Branch builds run "wrangler preview". Previews do not inherit the settings above, on purpose: a branch preview gets its own
+  // empty test database and photo storage, so trying out a change can never touch the real shop, and the Telegram bot has no
+  // keys there. The shop sets up its database tables by itself the first time it runs.
+  "previews": {
+    "vars": {
+      "SUPABASE_URL": "https://pysfxmosoijbghfzfhge.supabase.co",
+      "SUPABASE_PUBLISHABLE_KEY": "sb_publishable_1JpYRy4J3SguN2VIiqV4GQ_AI0LYEhV"
+    },
+    "d1_databases": [
+      {
+        "binding": "DB",
+        "database_name": "chadrey-store-preview",
+        "database_id": "02d0d1b2-110f-4179-b53a-89334a40011b"
+      }
+    ],
+    "r2_buckets": [
+      {
+        "binding": "PHOTOS",
+        "bucket_name": "chadrey-store-photos-preview"
+      }
+    ],
+    "images": {
+      "binding": "IMAGES"
+    }
+  }
 }

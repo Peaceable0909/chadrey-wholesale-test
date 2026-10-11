@@ -8,16 +8,8 @@ import type { Product } from "@/lib/catalogue";
 import { prepareImage } from "@/lib/imageCompress";
 import { draftFromProduct, fieldsFromDraft, type ProductDraft } from "@/lib/productDraft";
 import { productHref } from "@/lib/productRoute";
-import {
-  deleteImage,
-  deleteProductRecord,
-  insertImageRows,
-  isStillReferencedError,
-  saveImageLabels,
-  setCoverImage,
-  updateProductRecord,
-  uploadProductImages,
-} from "@/lib/productWriteApi";
+import { photoSrc } from "@/lib/photos";
+import { deleteImage, deleteProductRecord, isStillReferencedError, saveImageLabels, setCoverImage, updateProductRecord, uploadProductPhoto } from "@/lib/productWriteApi";
 import { errorMessage } from "@/lib/supabaseCompat";
 import { cn } from "@/lib/utils";
 
@@ -57,10 +49,10 @@ export function ProductEditor({ product, knownCategories, onClose, onChanged }: 
     setSaving(true);
     setError("");
     try {
-      const result = await updateProductRecord(product.id, fields);
+      await updateProductRecord(product.id, fields);
       const changed = product.images.filter(image => labels[image.id] !== undefined && labels[image.id].trim() !== (image.label ?? ""));
-      if (changed.length) await saveImageLabels(changed.map(image => ({ id: image.id, label: labels[image.id] })), fields.name);
-      toast.success(result.pricingSaved ? "Product saved" : "Saved. Prices need the database update first.");
+      if (changed.length) await saveImageLabels(product.id, changed.map(image => ({ id: image.id, label: labels[image.id] })));
+      toast.success("Product saved");
       await onChanged();
       onClose();
     } catch (caught) {
@@ -89,14 +81,8 @@ export function ProductEditor({ product, knownCategories, onClose, onChanged }: 
     const files = Array.from(list).filter(file => file.type.startsWith("image/"));
     await runPhotoTask(async () => {
       const prepared = await Promise.all(files.map(file => prepareImage(file)));
-      const startSort = product.images.reduce((max, image) => Math.max(max, image.sortOrder), -1) + 1;
-      const uploaded = await uploadProductImages(product.slug, prepared, product.images.length);
-      await insertImageRows(
-        product.id,
-        product.name,
-        uploaded.map((image, index) => ({ image, label: "", isPrimary: product.images.length === 0 && index === 0 })),
-        startSort,
-      );
+      // The first photo of a product becomes its cover by itself; later ones go after the existing photos.
+      for (const file of prepared) await uploadProductPhoto(product.id, file);
     }, files.length === 1 ? "Photo added" : "Photos added");
   }
 
@@ -104,18 +90,15 @@ export function ProductEditor({ product, knownCategories, onClose, onChanged }: 
     if (!product) return;
     const image = product.images.find(item => item.id === imageId);
     if (!image) return;
-    const remaining = product.images.filter(item => item.id !== imageId);
-    await runPhotoTask(async () => {
-      await deleteImage({ id: image.id, storage_path: image.storagePath ?? "" });
-      if (image.isPrimary && remaining.length) await setCoverImage(product.id, remaining[0].id);
-    }, "Photo removed");
+    // If this was the cover, the next photo becomes the cover.
+    await runPhotoTask(() => deleteImage(product.id, image.id), "Photo removed");
   }
 
   async function removeProduct() {
     if (!product) return;
     setDeleting(true);
     try {
-      await deleteProductRecord(product.id, product.images.map(image => image.storagePath).filter((path): path is string => Boolean(path)));
+      await deleteProductRecord(product.id);
       toast.success("Product deleted");
       setConfirmDelete(false);
       await onChanged();
@@ -156,7 +139,7 @@ export function ProductEditor({ product, knownCategories, onClose, onChanged }: 
               <ul className="space-y-3">
                 {product.images.map((image, index) => (
                   <li key={image.id} className="flex items-center gap-3">
-                    <img src={image.url} alt="" className="size-14 shrink-0 rounded-[12px] bg-fill-4 object-cover" />
+                    <img src={photoSrc(image.url, 160)} alt="" className="size-14 shrink-0 rounded-[12px] bg-fill-4 object-cover" />
                     <TextInput
                       aria-label={`Label for photo ${index + 1}`}
                       placeholder={index === 0 ? "Label (cover photo)" : "Label (optional)"}

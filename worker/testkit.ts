@@ -1,43 +1,33 @@
-import type { Env, TelegramMessage, TelegramUpdate } from "./types";
+import { GIF_BYTES, JPEG_BYTES, PNG_BYTES, WEBP_BYTES } from "./testEnv";
+import type { D1Database, D1PreparedStatement, Env, R2Bucket, TelegramMessage, TelegramUpdate } from "./types";
 
 /**
- * A pretend Telegram and a pretend Supabase behind one fetch function, for the tests.
- * It follows the real services closely enough to catch mistakes: wrong keys are refused,
- * duplicate ids and web addresses give Postgres' 23505 error, and missing price columns give PostgREST's PGRST204.
+ * A pretend Telegram for the bot's tests. Saving products and photos uses the real (local) database and
+ * file storage from testEnv.ts, so only Telegram is pretended here.
  */
 
 export const TOKEN = "123456:TEST-BOT-TOKEN";
-export const SERVICE_KEY = "sb_secret_TEST_SERVICE_KEY";
-export const SUPABASE_URL = "https://proj.supabase.co";
 export const OWNER = 1001;
 
-export type Row = Record<string, unknown>;
+type Row = Record<string, unknown>;
 
-type Options = {
-  /** false pretends supabase_product_pricing.sql has not been run. */
-  pricingColumns?: boolean;
-};
-
-export function createBackend(options: Options = {}) {
+export function createBackend() {
   const state = {
-    products: new Map<string, Row>(),
-    images: [] as Row[],
-    storage: new Map<string, { size: number; contentType: string | null; upsert: string | null; cacheControl: string | null }>(),
     sent: [] as Array<{ chat_id: number; text: string; reply_to: number | null }>,
     telegramFiles: new Map<string, { path: string; bytes: Uint8Array }>(),
-    requests: [] as Array<{ method: string; url: string; headers: Record<string, string> }>,
-    pricingColumns: options.pricingColumns ?? true,
-    /** Set to make the next matching Supabase request fail. */
-    failNext: null as null | { match: (method: string, path: string) => boolean; status: number; body: Row },
-    /** Called before each Telegram file download. Lets a test make the download fail. */
+    requests: [] as Array<{ method: string; url: string }>,
+    /** Set to make every Telegram file download fail. */
     failDownload: false,
-    bucketMissing: false,
   };
 
   const json = (status: number, body: unknown) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 
-  function addTelegramFile(fileId: string, size = 2048, path = `photos/${fileId}.jpg`) {
-    state.telegramFiles.set(fileId, { path, bytes: new Uint8Array(size).fill(7) });
+  /** A file of the given size that starts like a real picture of the kind its name says. */
+  function addTelegramFile(fileId: string, size = 2048, path = `photos/${fileId}.jpg`, bytes?: Uint8Array) {
+    const magic = path.endsWith(".png") ? PNG_BYTES : path.endsWith(".webp") ? WEBP_BYTES : path.endsWith(".gif") ? GIF_BYTES : JPEG_BYTES;
+    const content = bytes ?? new Uint8Array(Math.max(size, magic.length)).fill(7);
+    if (!bytes) content.set(magic);
+    state.telegramFiles.set(fileId, { path, bytes: content });
   }
 
   async function telegram(url: URL, init?: RequestInit): Promise<Response> {
@@ -64,79 +54,10 @@ export function createBackend(options: Options = {}) {
     return json(404, { ok: false, description: "unknown method" });
   }
 
-  async function supabase(url: URL, init?: RequestInit): Promise<Response> {
-    const method = (init?.method ?? "GET").toUpperCase();
-    const headers = Object.fromEntries(Object.entries((init?.headers ?? {}) as Record<string, string>).map(([name, value]) => [name.toLowerCase(), value]));
-    if (headers.apikey !== SERVICE_KEY) return json(401, { message: "Invalid API key", hint: "Double check your Supabase `anon` or `service_role` API key." });
-    const injected = state.failNext;
-    if (injected && injected.match(method, url.pathname)) {
-      state.failNext = null;
-      return json(injected.status, injected.body);
-    }
-
-    if (url.pathname.startsWith("/storage/v1/object/product-images/")) {
-      if (state.bucketMissing) return json(404, { statusCode: "404", error: "Bucket not found", message: "Bucket not found" });
-      const path = decodeURIComponent(url.pathname.replace("/storage/v1/object/product-images/", ""));
-      if (state.storage.has(path)) return json(400, { statusCode: "409", error: "Duplicate", message: "The resource already exists" });
-      const bytes = init?.body as ArrayBuffer;
-      state.storage.set(path, { size: bytes.byteLength, contentType: headers["content-type"] ?? null, upsert: headers["x-upsert"] ?? null, cacheControl: headers["cache-control"] ?? null });
-      return json(200, { Key: `product-images/${path}` });
-    }
-
-    if (url.pathname === "/rest/v1/products" && method === "GET") {
-      const select = url.searchParams.get("select") ?? "";
-      const all = Array.from(state.products.values());
-      if (select.startsWith("id,name,category")) return json(200, [...all].reverse().map(row => ({ id: row.id, name: row.name, category: row.category, is_active: row.is_active })));
-      if (select === "slug") {
-        const prefix = (url.searchParams.get("slug") ?? "").replace(/^ilike\./, "").replace(/%$/, "").toLowerCase();
-        return json(200, all.filter(row => String(row.slug).toLowerCase().startsWith(prefix)).map(row => ({ slug: row.slug })));
-      }
-      if (select.startsWith("id,slug,name")) {
-        const id = (url.searchParams.get("id") ?? "").replace(/^eq\./, "");
-        const row = state.products.get(id);
-        return json(200, row ? [{ id: row.id, slug: row.slug, name: row.name, is_active: row.is_active }] : []);
-      }
-      return json(400, { message: "unsupported select" });
-    }
-
-    if (url.pathname === "/rest/v1/products" && method === "POST") {
-      const row = JSON.parse(String(init?.body)) as Row;
-      if (!state.pricingColumns && ("price_currency" in row || "price_unit" in row || "price_tiers" in row)) {
-        return json(400, { code: "PGRST204", details: null, hint: null, message: "Could not find the 'price_currency' column of 'products' in the schema cache" });
-      }
-      const id = String(row.id);
-      if (state.products.has(id)) return json(409, { code: "23505", details: `Key (id)=(${id}) already exists.`, hint: null, message: 'duplicate key value violates unique constraint "products_pkey"' });
-      if (Array.from(state.products.values()).some(existing => existing.slug === row.slug)) {
-        return json(409, { code: "23505", details: `Key (slug)=(${String(row.slug)}) already exists.`, hint: null, message: 'duplicate key value violates unique constraint "products_slug_key"' });
-      }
-      state.products.set(id, { ...row, created_at: new Date().toISOString() });
-      return new Response(null, { status: 201 });
-    }
-
-    if (url.pathname === "/rest/v1/product_images" && method === "GET") {
-      const productId = (url.searchParams.get("product_id") ?? "").replace(/^eq\./, "");
-      return json(200, state.images.filter(row => row.product_id === productId).map(row => ({ id: row.id })));
-    }
-
-    if (url.pathname === "/rest/v1/product_images" && method === "POST") {
-      const row = JSON.parse(String(init?.body)) as Row;
-      if (state.images.some(existing => existing.id === row.id)) return json(409, { code: "23505", details: "", hint: null, message: 'duplicate key value violates unique constraint "product_images_pkey"' });
-      if (row.is_primary === true && state.images.some(existing => existing.product_id === row.product_id && existing.is_primary === true)) {
-        return json(409, { code: "23505", details: "", hint: null, message: 'duplicate key value violates unique constraint "product_images_one_primary_idx"' });
-      }
-      state.images.push(row);
-      return new Response(null, { status: 201 });
-    }
-
-    return json(404, { message: `no pretend route for ${method} ${url.pathname}` });
-  }
-
   const fetchImpl = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     const url = new URL(typeof input === "string" ? input : input instanceof URL ? input.href : input.url);
-    const headers = Object.fromEntries(Object.entries((init?.headers ?? {}) as Record<string, string>).map(([name, value]) => [name.toLowerCase(), value]));
-    state.requests.push({ method: (init?.method ?? "GET").toUpperCase(), url: url.href, headers });
+    state.requests.push({ method: (init?.method ?? "GET").toUpperCase(), url: url.href });
     if (url.origin === "https://api.telegram.org") return telegram(url, init);
-    if (url.origin === SUPABASE_URL) return supabase(url, init);
     return new Response("unexpected host", { status: 502 });
   };
 
@@ -145,14 +66,15 @@ export function createBackend(options: Options = {}) {
 
 export type Backend = ReturnType<typeof createBackend>;
 
+/** Settings for the bot. The database and photo storage are stand-ins unless the test passes the real ones. */
 export function baseEnv(overrides: Partial<Env> = {}): Env {
   return {
     ASSETS: { fetch: async () => new Response("asset") },
+    DB: {} as D1Database,
+    PHOTOS: {} as R2Bucket,
     TELEGRAM_BOT_TOKEN: TOKEN,
     TELEGRAM_WEBHOOK_SECRET: "hook-secret-value",
     TELEGRAM_ALLOWED_USER_IDS: `${OWNER}, 1002`,
-    SUPABASE_URL,
-    SUPABASE_SERVICE_KEY: SERVICE_KEY,
     DEFAULT_CURRENCY: "NGN",
     DEFAULT_UNIT: "pc",
     DEFAULT_MOQ: "1",
@@ -165,6 +87,47 @@ export function deps(backend: Backend, extra: { sleep?: (ms: number) => Promise<
 }
 
 export const EXAMPLE_CAPTION = "100ml Original sugar marshmallow\n\n48,000 wholesale\n\n55,000-60,000 Resell";
+
+/**
+ * Wraps the database so that one kind of statement fails, to see how the bot copes.
+ * `fails` decides by the SQL text; `error` is what the database "says".
+ */
+export function failingDatabase(db: D1Database, fails: (sql: string) => boolean, error: Error, options: { times?: number } = {}): D1Database & { failures: number } {
+  let remaining = options.times ?? Infinity;
+  const wrapped = {
+    failures: 0,
+    prepare(sql: string): D1PreparedStatement {
+      const real = db.prepare(sql);
+      if (!fails(sql) || remaining <= 0) return real;
+      const broken: D1PreparedStatement = {
+        bind: () => broken,
+        first: async () => {
+          remaining -= 1;
+          wrapped.failures += 1;
+          throw error;
+        },
+        all: async () => {
+          remaining -= 1;
+          wrapped.failures += 1;
+          throw error;
+        },
+        run: async () => {
+          remaining -= 1;
+          wrapped.failures += 1;
+          throw error;
+        },
+      };
+      return broken;
+    },
+    batch: (statements: D1PreparedStatement[]) => db.batch(statements),
+  };
+  return wrapped as unknown as D1Database & { failures: number };
+}
+
+/** Wraps the photo storage so that saving a file fails. */
+export function failingBucket(bucket: R2Bucket, error: Error): R2Bucket {
+  return { get: key => bucket.get(key), head: key => bucket.head(key), delete: keys => bucket.delete(keys), put: async () => Promise.reject(error) };
+}
 
 type PhotoOptions = {
   id: number;
