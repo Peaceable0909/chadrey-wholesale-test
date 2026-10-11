@@ -25,7 +25,8 @@ export async function handleTelegramRequest(request: Request, env: Env, ctx: Wor
   const missing = missingConfig(env);
 
   if (request.method === "GET") {
-    return json({ ready: missing.length === 0 && allowedUserIds(env).size > 0, missing, allowedUsers: allowedUserIds(env).size, ai: aiSettings(env).enabled });
+    const ai = aiSettings(env);
+    return json({ ready: missing.length === 0 && allowedUserIds(env).size > 0, missing, allowedUsers: allowedUserIds(env).size, ai: ai.enabled, aiService: ai.provider });
   }
   if (request.method !== "POST") return json({ error: "Method not allowed" }, 405, { allow: "GET, POST" });
   if (missing.length) return json({ error: "Telegram intake is not set up yet", missing }, 503);

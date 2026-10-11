@@ -82,10 +82,16 @@ export type Env = {
   SITE_URL?: string;
   /** Only the tests change this, to point at a pretend Telegram. */
   TELEGRAM_API_BASE?: string;
-  /** Optional. A Puter "API token" (puter.com/dashboard#account). With it the bot writes the missing parts of a draft with AI; Puter charges the AI to that account's own allowance. */
+  /** Optional. An Alibaba Cloud Model Studio "API key" (a secret). With it the bot writes the missing parts of a draft with Alibaba's Qwen AI; Alibaba charges the AI to that account. It wins over the Puter token below. */
+  QWEN_API_KEY?: string;
+  /** Optional. The "API Host" Alibaba shows when the key is made, if the built-in international address does not suit the key. Only Alibaba's own https addresses are used. */
+  QWEN_API_BASE?: string;
+  /** Optional. A Puter "API token" (puter.com/dashboard#account), the other way to get AI drafting; Puter charges the AI to that account's own allowance. */
   PUTER_AUTH_TOKEN?: string;
-  /** Optional. Which AI model writes the drafts. Defaults to a small, fast Claude model (see draftAi.ts). */
+  /** Optional. Which AI model writes the drafts. Defaults to a small, fast model for the service in use (see config.ts). */
   AI_MODEL?: string;
+  /** Only the tests change this, to point at a pretend Qwen. */
+  QWEN_API_ORIGIN?: string;
   /** Only the tests change this, to point at a pretend Puter. */
   PUTER_API_ORIGIN?: string;
 };

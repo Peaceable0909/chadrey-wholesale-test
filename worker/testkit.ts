@@ -2,16 +2,19 @@ import { GIF_BYTES, JPEG_BYTES, PNG_BYTES, WEBP_BYTES } from "./testEnv";
 import type { D1Database, D1PreparedStatement, Env, R2Bucket, TelegramMessage, TelegramUpdate } from "./types";
 
 /**
- * A pretend Telegram, and a pretend Puter (the AI), for the bot's tests. Saving products and photos uses the real (local)
+ * A pretend Telegram, and a pretend Alibaba (Qwen) and Puter (the two AI services), for the bot's tests. Saving products and photos uses the real (local)
  * database and file storage from testEnv.ts, so only Telegram and Puter are pretended here.
  */
 
 export const TOKEN = "123456:TEST-BOT-TOKEN";
 export const PUTER_TOKEN = "puter-test-token-0123456789";
+export const QWEN_KEY = "qwen-test-key-0123456789";
 export const OWNER = 1001;
 
 /** One request the pretend Puter received. */
 export type PuterCall = { body: any; headers: Record<string, string> };
+/** One request the pretend Alibaba received. */
+export type QwenCall = { url: string; body: any; headers: Record<string, string> };
 
 /** What a well-behaved model answers for the lunch-box photo used in the tests. */
 export const AI_ANSWER = {
@@ -24,6 +27,15 @@ export const AI_ANSWER = {
 
 /** Puter's success envelope around the model's reply text. */
 export const puterOk = (text: string) => new Response(JSON.stringify({ success: true, result: { message: { role: "assistant", content: text } } }), { status: 200, headers: { "content-type": "application/json" } });
+/** Alibaba's success reply (the OpenAI chat format) around the model's text. */
+export const qwenOk = (text: string) =>
+  new Response(JSON.stringify({ id: "chatcmpl-test", object: "chat.completion", model: "qwen3-vl-plus", choices: [{ index: 0, finish_reason: "stop", message: { role: "assistant", content: text } }], usage: { prompt_tokens: 100, completion_tokens: 50, total_tokens: 150 } }), {
+    status: 200,
+    headers: { "content-type": "application/json" },
+  });
+/** An error the way Alibaba's OpenAI-style API sends it: {"error": {"message", "type", "param", "code"}}. */
+export const qwenError = (status: number, code: string, message: string) => new Response(JSON.stringify({ error: { message, type: code, param: null, code } }), { status, headers: { "content-type": "application/json" } });
+
 /** An error the way Puter's server sends it (see its errorHandler): the message twice, and a short code. */
 export const puterError = (status: number, code: string, message: string) => new Response(JSON.stringify({ error: message, message, code }), { status, headers: { "content-type": "application/json" } });
 
@@ -40,6 +52,10 @@ export function createBackend() {
     puterCalls: [] as PuterCall[],
     /** What the pretend Puter answers: the model's reply text, or a whole response. Replace it to test failures. */
     puterReply: (async () => JSON.stringify(AI_ANSWER)) as (call: PuterCall) => Response | string | Promise<Response | string>,
+    /** Every request the pretend Alibaba received. */
+    qwenCalls: [] as QwenCall[],
+    /** What the pretend Alibaba answers: the model's text, or a whole Response (see qwenError). */
+    qwenReply: (async () => JSON.stringify(AI_ANSWER)) as (call: QwenCall) => Response | string | Promise<Response | string>,
     telegramFiles: new Map<string, { path: string; bytes: Uint8Array }>(),
     requests: [] as Array<{ method: string; url: string }>,
     /** Set to make every Telegram file download fail. */
@@ -97,11 +113,21 @@ export function createBackend() {
     return typeof answer === "string" ? puterOk(answer) : answer;
   }
 
+  async function qwen(url: URL, init?: RequestInit): Promise<Response> {
+    if (!url.pathname.endsWith("/compatible-mode/v1/chat/completions")) return json(404, { error: { code: "not_found", message: "No such route" } });
+    const call: QwenCall = { url: url.href, body: JSON.parse(String(init?.body ?? "{}")), headers: Object.fromEntries(new Headers(init?.headers).entries()) };
+    state.qwenCalls.push(call);
+    if (call.headers.authorization !== `Bearer ${QWEN_KEY}`) return qwenError(401, "invalid_api_key", "Incorrect API key provided.");
+    const answer = await state.qwenReply(call);
+    return typeof answer === "string" ? qwenOk(answer) : answer;
+  }
+
   const fetchImpl = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     const url = new URL(typeof input === "string" ? input : input instanceof URL ? input.href : input.url);
     state.requests.push({ method: (init?.method ?? "GET").toUpperCase(), url: url.href });
     if (url.origin === "https://api.telegram.org") return telegram(url, init);
     if (url.origin === "https://api.puter.com") return puter(url, init);
+    if (url.protocol === "https:" && url.hostname.endsWith(".aliyuncs.com")) return qwen(url, init);
     return new Response("unexpected host", { status: 502 });
   };
 

@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { PuterError, puterChat, puterProblem } from "./puter";
+import { AiError, aiProblem } from "./aiError";
+import { puterChat } from "./puter";
 import { puterError, puterOk, PUTER_TOKEN } from "./testkit";
 
 const base = { token: PUTER_TOKEN, model: "claude-haiku-5-5", prompt: "Say hi" };
 const answers = (response: Response | (() => Response | Promise<Response>)) => (async () => (typeof response === "function" ? response() : response)) as unknown as typeof fetch;
-const failure = async (promise: Promise<unknown>) => (await promise.then(() => null, error => error)) as PuterError;
+const failure = async (promise: Promise<unknown>) => (await promise.then(() => null, error => error)) as AiError;
 
 describe("the request Puter receives", () => {
   it("is the same one Puter's own library sends", async () => {
@@ -81,12 +82,17 @@ describe("when Puter says no", () => {
     ["the token is wrong", 401, "token_auth_failed", "auth"],
     ["the token is not allowed to do this", 403, "forbidden", "auth"],
     ["the allowance is used up", 402, "insufficient_funds", "credit"],
-    ["the account needs a paid plan", 402, "subscription_required", "credit"],
+    ["the account needs a paid plan", 402, "subscription_required", "plan"],
+    ["the account's email address is not confirmed", 403, "account_is_not_verified", "email"],
     ["there are too many requests", 429, "too_many_requests", "busy"],
     ["something else goes wrong", 500, "internal_error", "other"],
+    ["Puter's own supplier has run out of credit", 503, "upstream_credits_exhausted", "other"],
+    ["Puter's supplier times out", 504, "gateway_timeout", "other"],
+    ["Puter's supplier refuses the request", 400, "upstream_bad_request", "other"],
   ])("%s", async (_name, status, code, kind) => {
     const error = await failure(puterChat({ ...base, fetch: answers(puterError(status, code, "Puter says no")) }));
-    expect(error).toBeInstanceOf(PuterError);
+    expect(error).toBeInstanceOf(AiError);
+    expect(error.provider).toBe("puter");
     expect(error.kind).toBe(kind);
     expect(error.status).toBe(status);
   });
@@ -94,7 +100,7 @@ describe("when Puter says no", () => {
   it("explains that a model for paying users is not a wrong token", async () => {
     const error = await failure(puterChat({ ...base, fetch: answers(puterError(403, "permission_denied", "The model x is only available to subscribers. Please subscribe to access this model.")) }));
     expect(error.kind).toBe("plan");
-    expect(puterProblem(error)).toMatch(/paid Puter plan.*AI_MODEL/);
+    expect(aiProblem(error)).toMatch(/paid Puter plan.*AI_MODEL/);
   });
 
   it("reads both ways Puter has of describing an error: the server's, and the library's nested one", async () => {
@@ -150,15 +156,24 @@ describe("when Puter is slow", () => {
 });
 
 describe("what a person is told", () => {
+  const puterFailure = (kind: AiError["kind"], message = "x") => new AiError(kind, message, undefined, "puter");
+
   it("is one plain sentence for each kind of failure", () => {
-    expect(puterProblem(new PuterError("auth", "x"))).toMatch(/did not accept the token.*PUTER_AUTH_TOKEN/);
-    expect(puterProblem(new PuterError("credit", "x"))).toMatch(/allowance.*used up/);
-    expect(puterProblem(new PuterError("plan", "x"))).toMatch(/paid Puter plan/);
-    expect(puterProblem(new PuterError("busy", "x"))).toMatch(/busy/);
-    expect(puterProblem(new PuterError("timeout", "x"))).toMatch(/too long/);
-    expect(puterProblem(new PuterError("unreachable", "x"))).toMatch(/could not be reached/);
-    expect(puterProblem(new PuterError("bad_answer", "x"))).toMatch(/could not be used/);
-    expect(puterProblem(new PuterError("other", "Model exploded\nbadly"))).toBe("Model exploded badly");
-    expect(puterProblem(new Error("boom"))).toBe("something unexpected went wrong");
+    expect(aiProblem(puterFailure("auth"))).toMatch(/did not accept the token.*PUTER_AUTH_TOKEN/);
+    expect(aiProblem(puterFailure("email"))).toMatch(/Puter wants the email address.*confirmed/);
+    expect(aiProblem(puterFailure("credit"))).toMatch(/allowance.*used up/);
+    expect(aiProblem(puterFailure("plan"))).toMatch(/paid Puter plan.*waiting will not change/);
+    expect(aiProblem(puterFailure("busy"))).toMatch(/Puter is busy/);
+    expect(aiProblem(puterFailure("timeout"))).toMatch(/Puter took too long/);
+    expect(aiProblem(puterFailure("unreachable"))).toMatch(/Puter could not be reached/);
+    expect(aiProblem(puterFailure("bad_answer"))).toMatch(/could not be used/);
+    expect(aiProblem(puterFailure("other", "Model exploded\nbadly"))).toBe("Model exploded badly");
+    expect(aiProblem(new Error("boom"))).toBe("something unexpected went wrong");
+  });
+
+  it("never ends with a full stop, so the caller's own full stop does not double up", () => {
+    for (const kind of ["auth", "email", "credit", "plan", "model", "blocked", "busy", "timeout", "unreachable", "bad_answer"] as const) expect(aiProblem(puterFailure(kind))).not.toMatch(/[.\s]$/);
+    expect(aiProblem(puterFailure("other", "The photo is too large to send to the AI."))).toBe("The photo is too large to send to the AI");
+    expect(aiProblem(puterFailure("other", "..."))).toBe("Puter returned an error");
   });
 });

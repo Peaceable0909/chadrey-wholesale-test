@@ -384,9 +384,12 @@ export async function updateProduct(db: D1Database, id: string, input: ProductIn
 }
 
 /**
- * Fills in the text of a draft the bot saved moments ago, but ONLY while it is still hidden and exactly as the bot saved it,
- * so it can never overwrite something a person changed in the meantime or touch a product that is already live.
- * false means the draft was not updated (it changed, was shown in the store, or was deleted).
+ * Fills in the text of a draft the bot saved moments ago, but ONLY while nobody has touched it since: it must still be hidden,
+ * still have the text the bot saved, and its updated_at must still equal its created_at. Every change made in Admin (the text,
+ * but also the price, the minimum order, the colours or the sizes) sets updated_at, so that one check protects all of them, not
+ * only the columns compared here. (SQLite gives 'now' the same value everywhere in one statement, which is why a draft the bot
+ * saved has the two dates equal.) The write is all or nothing.
+ * false means the draft was not updated: it was changed, shown in the store, or deleted.
  */
 export async function applyDraftText(
   db: D1Database,
@@ -400,7 +403,7 @@ export async function applyDraftText(
   const result = await db
     .prepare(
       `UPDATE products SET short_description = ?, description = ?, category = ?, colors = COALESCE(?, colors), updated_at = ${NOW}
-       WHERE id = ? AND is_active = 0 AND name = ? AND short_description = ? AND description = ? AND category = ?`,
+       WHERE id = ? AND is_active = 0 AND updated_at = created_at AND name = ? AND short_description = ? AND description = ? AND category = ?`,
     )
     .bind(set.short_description, set.description, set.category, set.colors ? JSON.stringify(set.colors) : null, id, expected.name, expected.short_description, expected.description, expected.category)
     .run();

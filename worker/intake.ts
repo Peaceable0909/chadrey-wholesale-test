@@ -1,12 +1,13 @@
 import { describeParsed, formatAmount, formatResellRange, isUncategorised, parseProductMessage, UNCATEGORISED, type ParsedProductMessage } from "../shared/productMessage";
 import { slugOrFallback } from "../shared/slug";
 import { canonicalCategory, findSameName, guessCategory, type KnownProduct } from "./category";
+import { aiProblem, PROVIDER_NAMES } from "./aiError";
 import { aiSettings, allowedUserIds, intakeDefaults, type AiSettings } from "./config";
 import { checkAi, draftWithAi, type AiDraft } from "./draftAi";
+import { cut } from "./draftFilter";
 import { HttpError } from "./http";
 import { stableUuid } from "./ids";
 import { storePhoto } from "./photos";
-import { puterProblem } from "./puter";
 import { ensureSchema } from "./schema";
 import { SlugTakenError, addImage, applyDraftText, countImages, freeSlug, getProduct, insertProduct, knownProducts, productBasics, type ProductInput } from "./store";
 import { createTelegram, TELEGRAM_API, TelegramError } from "./telegramApi";
@@ -28,6 +29,8 @@ type Context = {
   deps: IntakeDeps;
   telegram: Telegram;
   ai: AiSettings;
+  /** When the bot started on this message (a clock time in milliseconds). The AI is given only what is left of the bot's ~30 seconds. */
+  startedAt: number;
   /** Sends a reply. Returns the id of the message that was sent, or null when it could not be sent. */
   say: (text: string) => Promise<number | null>;
   /** Changes a reply sent earlier. Sends a new message instead when that is not possible. */
@@ -35,9 +38,23 @@ type Context = {
 };
 
 const MAX_PHOTO_BYTES = 10 * 1024 * 1024;
-const DRAFT_ID_LINE = /Draft ID: ([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i;
+const DRAFT_ID_LINE = /Draft ID: ([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/gi;
 /** How much of the AI's description is shown in the chat. The whole text is on the draft. */
 const PREVIEW_CHARACTERS = 500;
+/**
+ * Telegram lets the bot work for about 30 seconds after it has answered. The AI must be finished by these moments (counted from
+ * when the bot started on the message), which leaves time to save its text and change the reply. When the AI names the product
+ * itself it goes first and the draft, the photo and the reply still follow, so it gets less.
+ */
+const AI_DEADLINE_AFTER_SAVE_MS = 26_000;
+const AI_DEADLINE_BEFORE_SAVE_MS = 22_000;
+
+/** The id on the LAST "Draft ID:" line of a message. The real line is always last, so text the AI wrote above it can never redirect a photo. */
+function lastDraftId(text: string | undefined): string | undefined {
+  let found: string | undefined;
+  for (const match of (text ?? "").matchAll(DRAFT_ID_LINE)) found = match[1];
+  return found?.toLowerCase();
+}
 
 const EXAMPLE = ["100ml Original sugar marshmallow", "48,000 wholesale", "55,000-60,000 Resell"].join("\n");
 
@@ -60,7 +77,7 @@ const HELP_WITH_AI = [
   "I save it as a hidden draft and write the rest (description, category, colours) with AI from the photo. You check and approve it in Admin > Products > Hidden before shoppers can see it.",
   "",
   "The price and the minimum order come only from what you type. Extras, each on its own line: MOQ 24, #category, or \"per carton\" after the price.",
-  "More photos for a draft: send them together as an album, or reply to my confirmation with the photo. Send /ai to test the AI, or reply /redo to a draft's message to have the AI try again.",
+  "More photos for a draft: send them together as an album, or reply to my confirmation with the photo. Send /ai to test the AI. If a draft's description was not written, reply to its message with the word redo and the AI tries again.",
 ].join("\n");
 
 const describe = (error: unknown) => (error instanceof Error ? `${error.name}: ${error.message}` : String(error));
@@ -125,12 +142,12 @@ function composeDescription(aiText: string, notes: string[]): string {
 }
 
 function preview(text: string): string {
-  return text.length <= PREVIEW_CHARACTERS ? text : `${text.slice(0, PREVIEW_CHARACTERS).replace(/\s+\S*$/, "")}…`;
+  return text.length <= PREVIEW_CHARACTERS ? text : `${cut(text, PREVIEW_CHARACTERS).replace(/\s+\S*$/, "")}…`;
 }
 
-const WRITING = ["✨ Writing the description from your photo…"];
+const WRITING = ["✨ Writing the description from your photo… If this message does not change within a minute, reply to it with the word redo."];
 const aiDone = (draft: AiDraft) => ["✨ Written by AI from your photo. Please check it before you show it in the store:", draft.short_description, "", preview(draft.description)];
-const aiFailed = (error: unknown) => [`ℹ️ I couldn't write the description with AI: ${puterProblem(error)}.`, "The draft is saved as you sent it. Reply /redo to this message to try again."];
+const aiFailed = (error: unknown) => [`ℹ️ I couldn't write the description with AI: ${aiProblem(error)}.`, "The draft is saved as you sent it. To try again, reply to this message with the word redo."];
 const aiSkipped = ["ℹ️ This draft was changed while the AI was writing, so I left its text alone."];
 
 type SavedDraft = { name: string; short_description: string; description: string; category: string };
@@ -156,7 +173,7 @@ async function finishWithAi(
   const { env, deps } = ctx;
   let text: string;
   try {
-    const draft = await draftWithAi(env, deps.fetch, { ownerName: args.saved.name, notes: args.parsed.notes, categories: categoryNames(args.known), photos: [args.photo] }, { sleep: deps.sleep });
+    const draft = await draftWithAi(env, deps.fetch, { ownerName: args.saved.name, notes: args.parsed.notes, categories: categoryNames(args.known), photos: [args.photo] }, { sleep: deps.sleep, deadline: ctx.startedAt + AI_DEADLINE_AFTER_SAVE_MS });
     const category = args.typedCategory ?? draft.category ?? args.saved.category;
     const applied = await applyDraftText(env.DB, args.productId, {
       expected: args.saved,
@@ -177,6 +194,13 @@ async function createDraft(ctx: Context, image: Incoming, caption: string): Prom
   const parsed = parseProductMessage(caption);
   const alone = !message.media_group_id;
 
+  // Without a name there is nothing to save, unless the AI can name it from the photo (only for a photo on its own: the other photos
+  // of an album arrive while the AI is still thinking and would find no draft to join). This is checked before anything is read or saved.
+  if (!parsed.name && (!ai.enabled || !alone)) {
+    await say(`I couldn't find a product name in that caption. Put the name on the first line, then the prices:\n\n${EXAMPLE}`);
+    return;
+  }
+
   // Products already in the shop: used to guess the category and to warn about a repeat. A failure here must not stop the save.
   const known: KnownProduct[] = await knownProducts(env.DB).catch(error => {
     console.error("could not list products", describe(error));
@@ -193,18 +217,13 @@ async function createDraft(ctx: Context, image: Incoming, caption: string): Prom
   let drafted: AiDraft | null = null;
 
   if (!name) {
-    // Only the AI can name a product from the photo alone. An album is never named this way: its other photos arrive while the
-    // AI is still thinking and would find no draft to join.
-    if (!ai.enabled || !alone) {
-      await say(`I couldn't find a product name in that caption. Put the name on the first line, then the prices:\n\n${EXAMPLE}`);
-      return;
-    }
+    // Only the AI can name a product from the photo alone (see the check above).
     photoBytes = (await ctx.telegram.downloadFile(image.fileId, MAX_PHOTO_BYTES)).bytes;
     try {
-      drafted = await draftWithAi(env, deps.fetch, { ownerName: "", notes: parsed.notes, categories: categoryNames(known), photos: [photoBytes] }, { sleep: deps.sleep });
+      drafted = await draftWithAi(env, deps.fetch, { ownerName: "", notes: parsed.notes, categories: categoryNames(known), photos: [photoBytes] }, { sleep: deps.sleep, deadline: ctx.startedAt + AI_DEADLINE_BEFORE_SAVE_MS });
     } catch (error) {
       console.error("the AI could not name the product", describe(error));
-      await say(`I couldn't find a product name in that caption, and the AI could not suggest one: ${puterProblem(error)}.\n\nPut the name on the first line, then the prices:\n\n${EXAMPLE}`);
+      await say(`I couldn't find a product name in that caption, and the AI could not suggest one: ${aiProblem(error)}.\n\nPut the name on the first line, then the prices:\n\n${EXAMPLE}`);
       return;
     }
     name = drafted.name.slice(0, 200);
@@ -233,6 +252,9 @@ async function createDraft(ctx: Context, image: Incoming, caption: string): Prom
     category,
   };
 
+  // Only the delivery that really created the draft asks the AI for its text. When Telegram delivers the same message twice at the
+  // same moment, the other one finds the draft already saved and leaves the AI to the first.
+  let created = false;
   if (!existing) {
     const input: ProductInput = {
       name,
@@ -251,12 +273,12 @@ async function createDraft(ctx: Context, image: Incoming, caption: string): Prom
       is_active: false,
     };
     try {
-      await insertProduct(env.DB, { id: productId, slug, input, createdBy: null });
+      created = (await insertProduct(env.DB, { id: productId, slug, input, createdBy: null })) === "created";
     } catch (error) {
       if (!(error instanceof SlugTakenError)) throw error;
       // Someone else took the web address a moment ago: add a short random ending and try once more.
       slug = `${slug}-${Math.random().toString(36).slice(2, 6)}`;
-      await insertProduct(env.DB, { id: productId, slug, input, createdBy: null });
+      created = (await insertProduct(env.DB, { id: productId, slug, input, createdBy: null })) === "created";
     }
   }
 
@@ -284,7 +306,7 @@ async function createDraft(ctx: Context, image: Incoming, caption: string): Prom
 
   // A draft that is new gets its text written by the AI after the first reply, so the owner is never left waiting and an
   // album's other photos can already join the draft. A draft the AI named is complete already.
-  const willDraft = ai.enabled && !drafted && !existing && !photoFailed && photo !== null;
+  const willDraft = ai.enabled && !drafted && created && !photoFailed && photo !== null;
   const sentId = await say(compose(willDraft ? WRITING : drafted ? aiDone(drafted) : []));
   if (willDraft && photo) await finishWithAi(ctx, { productId, sentId, photo, parsed, saved, typedCategory, known, compose, categoryNote });
 }
@@ -320,19 +342,20 @@ async function attachToAlbum(ctx: Context, image: Incoming): Promise<void> {
 }
 
 /**
- * The /redo command, sent as a reply to a draft's message: asks the AI again for a draft whose text could not be written
- * (Puter was busy or out of allowance, or AI drafting was switched on later). Only a hidden draft with no AI text yet.
+ * Asking again, as a reply to a draft's message ("redo", or /redo): asks the AI once more for a draft whose text could not be
+ * written (the service was busy or out of allowance, or AI drafting was switched on later). Only for a hidden draft exactly as the
+ * bot saved it, so nothing a person wrote or changed is ever replaced.
  */
 async function redoDraft(ctx: Context): Promise<void> {
   const { env, deps, say } = ctx;
   const reply = ctx.message.reply_to_message;
-  const draftId = reply?.from?.is_bot ? DRAFT_ID_LINE.exec(reply.text ?? reply.caption ?? "")?.[1]?.toLowerCase() : undefined;
+  const draftId = reply?.from?.is_bot ? lastDraftId(reply.text ?? reply.caption) : undefined;
   if (!draftId) {
-    await say("Reply to a draft's message with /redo and I will ask the AI to write its description again.");
+    await say("Reply to a draft's message with the word redo and I will ask the AI to write its description again.");
     return;
   }
   if (!ctx.ai.enabled) {
-    await say("AI drafting is off, so there is nothing to redo. Add your Puter token as the secret PUTER_AUTH_TOKEN in Cloudflare to switch it on.");
+    await say("AI drafting is off, so there is nothing to redo. Add your Alibaba Cloud (Qwen) key as the secret QWEN_API_KEY in Cloudflare to switch it on. The setup guide has the steps.");
     return;
   }
 
@@ -350,6 +373,11 @@ async function redoDraft(ctx: Context): Promise<void> {
     await say(`“${product.name}” already has AI-written text. Change it in Admin > Products.`);
     return;
   }
+  // Every change made in Admin sets updated_at, so a draft that differs from its first save was edited by a person.
+  if (product.updated_at !== product.created_at) {
+    await say(`“${product.name}” was edited after I saved it, so I leave its text alone. Change it in Admin > Products.`);
+    return;
+  }
   const cover = product.product_images[0];
   const photo = cover ? await env.PHOTOS.get(cover.storage_path) : null;
   if (!photo) {
@@ -361,7 +389,7 @@ async function redoDraft(ctx: Context): Promise<void> {
   const notes = product.description.split("\n").map(line => line.trim()).filter(Boolean);
   try {
     const known: KnownProduct[] = await knownProducts(env.DB).catch(() => []);
-    const draft = await draftWithAi(env, deps.fetch, { ownerName: product.name, notes, categories: categoryNames(known), photos: [await photo.arrayBuffer()] }, { sleep: deps.sleep });
+    const draft = await draftWithAi(env, deps.fetch, { ownerName: product.name, notes, categories: categoryNames(known), photos: [await photo.arrayBuffer()] }, { sleep: deps.sleep, deadline: ctx.startedAt + AI_DEADLINE_AFTER_SAVE_MS });
     const category = isUncategorised(product.category) ? (draft.category ?? product.category) : product.category;
     const applied = await applyDraftText(env.DB, product.id, {
       expected: { name: product.name, short_description: product.short_description, description: product.description, category: product.category },
@@ -378,22 +406,29 @@ async function redoDraft(ctx: Context): Promise<void> {
     await say(lines.join("\n"));
   } catch (error) {
     console.error("AI redo failed", describe(error));
-    await say(`ℹ️ I couldn't write the description with AI: ${puterProblem(error)}.\n\nReply /redo to this message to try again.\n\nDraft ID: ${product.id}`);
+    await say(`ℹ️ I couldn't write the description with AI: ${aiProblem(error)}.\n\nTo try again, reply to this message with the word redo.\n\nDraft ID: ${product.id}`);
   }
 }
 
-/** The /ai command: says whether AI drafting is on and tries it with a tiny question. */
+/** The /ai command: says whether AI drafting is on, and tests it by showing the AI a small red picture. */
 async function aiCheck(ctx: Context): Promise<void> {
   if (!ctx.ai.enabled) {
-    await ctx.say("AI drafting is off. To switch it on, add your Puter token as the secret PUTER_AUTH_TOKEN in Cloudflare (the steps are in the setup guide). Until then I save drafts exactly as you send them.");
+    await ctx.say("AI drafting is off. To switch it on, add your Alibaba Cloud (Qwen) key as the secret QWEN_API_KEY in Cloudflare (the steps are in the setup guide). Until then I save drafts exactly as you send them.");
     return;
   }
   try {
     const result = await checkAi(ctx.env, ctx.deps.fetch);
-    await ctx.say(`✅ AI drafting works.\nModel: ${result.model}\nAnswered in ${result.seconds} s.\n\nSend a photo with just a few words and I will write the rest.`);
+    const service = PROVIDER_NAMES[result.provider];
+    if (!result.sawPicture) {
+      await ctx.say(
+        `⚠️ ${service} answered, but not as if it could see the test picture (a red square). It said “${result.answer}”.\n\nModel: ${result.model}\nIf you set AI_MODEL in Cloudflare, check that it names a model that can look at pictures, or remove AI_MODEL to use the standard one.\n\nDrafts are still saved exactly as you send them.`,
+      );
+      return;
+    }
+    await ctx.say(`✅ AI drafting works.\nService: ${service}\nModel: ${result.model}\nIt looked at a small test picture and answered “${result.answer}” in ${result.seconds} s.\n\nSend a photo with just a few words and I will write the rest.`);
   } catch (error) {
     console.error("AI check failed", describe(error));
-    await ctx.say(`⚠️ AI drafting is switched on, but ${puterProblem(error)}.\n\nDrafts are still saved exactly as you send them.`);
+    await ctx.say(`⚠️ AI drafting is switched on, but ${aiProblem(error)}.\n\nDrafts are still saved exactly as you send them.`);
   }
 }
 
@@ -403,7 +438,8 @@ async function processMessage(ctx: Context): Promise<void> {
   const text = (message.text ?? "").trim();
   if (!image) {
     if (/^\/ai(?:@\w+)?$/i.test(text)) return aiCheck(ctx);
-    if (/^\/redo(?:@\w+)?$/i.test(text)) return redoDraft(ctx);
+    // "/redo" anywhere, or the plain word "redo" as a reply to one of the bot's messages (a "/redo" inside a message turns into a link that cannot reply).
+    if (/^\/redo(?:@\w+)?$/i.test(text) || (message.reply_to_message && /^redo[.!]?$/i.test(text))) return redoDraft(ctx);
     const help = ai.enabled ? HELP_WITH_AI : HELP;
     await say(!text || text.startsWith("/") ? help : `I need a photo to go with that. Send the photo and put the details in its caption.\n\n${help}`);
     return;
@@ -415,10 +451,10 @@ async function processMessage(ctx: Context): Promise<void> {
 
   await ensureSchema(ctx.env.DB);
   const reply = message.reply_to_message;
-  const draftId = reply?.from?.is_bot ? DRAFT_ID_LINE.exec(reply.text ?? reply.caption ?? "")?.[1] : undefined;
+  const draftId = reply?.from?.is_bot ? lastDraftId(reply.text ?? reply.caption) : undefined;
   const caption = (message.caption ?? "").trim();
 
-  if (draftId) return attachToDraft(ctx, image, draftId.toLowerCase());
+  if (draftId) return attachToDraft(ctx, image, draftId);
   if (caption) return createDraft(ctx, image, caption);
   if (message.media_group_id) return attachToAlbum(ctx, image);
   // A photo on its own, with no words: the AI can name and describe it. Without the AI there is nothing to go on.
@@ -428,6 +464,7 @@ async function processMessage(ctx: Context): Promise<void> {
 
 /** Handles one Telegram update. Never throws: problems are logged and reported back in the chat. */
 export async function handleUpdate(update: TelegramUpdate, env: Env, deps: IntakeDeps): Promise<void> {
+  const startedAt = Date.now();
   const message = update.message;
   if (!message || message.chat?.type !== "private" || !message.from || message.from.is_bot) return;
 
@@ -458,7 +495,7 @@ export async function handleUpdate(update: TelegramUpdate, env: Env, deps: Intak
   }
 
   try {
-    await processMessage({ message, env, deps, telegram, ai: aiSettings(env), say, edit });
+    await processMessage({ message, env, deps, telegram, ai: aiSettings(env), startedAt, say, edit });
   } catch (error) {
     console.error("intake failed", describe(error));
     await say(failureText(error));

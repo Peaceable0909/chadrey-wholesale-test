@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { canonicalCategory, findSameName, guessCategory, nameTokens, type KnownProduct } from "./category";
-import { allowedUserIds, intakeDefaults, missingConfig, safeEqual } from "./config";
+import { aiSettings, allowedUserIds, intakeDefaults, missingConfig, qwenBase, safeEqual } from "./config";
 import { stableUuid } from "./ids";
 import { baseEnv } from "./testkit";
 
@@ -33,6 +33,36 @@ describe("configuration", () => {
     expect(intakeDefaults(baseEnv({ DEFAULT_CURRENCY: undefined, DEFAULT_UNIT: undefined, DEFAULT_MOQ: undefined }))).toEqual({ currency: "NGN", unit: "pc", moq: 1 });
     expect(intakeDefaults(baseEnv({ DEFAULT_CURRENCY: "naira", DEFAULT_UNIT: "bucket", DEFAULT_MOQ: "0" }))).toEqual({ currency: "NGN", unit: "pc", moq: 1 });
     expect(intakeDefaults(baseEnv({ DEFAULT_CURRENCY: "thb", DEFAULT_UNIT: "carton", DEFAULT_MOQ: "12" }))).toEqual({ currency: "THB", unit: "carton", moq: 12 });
+  });
+
+  it("switches AI drafting on with an Alibaba key or a Puter token, and prefers Alibaba", () => {
+    expect(aiSettings(baseEnv())).toEqual({ enabled: false, provider: null, model: "qwen3-vl-plus" });
+    expect(aiSettings(baseEnv({ QWEN_API_KEY: "  " , PUTER_AUTH_TOKEN: " " }))).toMatchObject({ enabled: false, provider: null });
+    expect(aiSettings(baseEnv({ QWEN_API_KEY: "key-1234567" }))).toEqual({ enabled: true, provider: "qwen", model: "qwen3-vl-plus" });
+    expect(aiSettings(baseEnv({ PUTER_AUTH_TOKEN: "token-1234567" }))).toEqual({ enabled: true, provider: "puter", model: "claude-haiku-5-5" });
+    expect(aiSettings(baseEnv({ QWEN_API_KEY: "key-1234567", PUTER_AUTH_TOKEN: "token-1234567" })).provider).toBe("qwen");
+  });
+
+  it("takes the model from AI_MODEL only when it looks like a model name", () => {
+    const key = { QWEN_API_KEY: "key-1234567" };
+    expect(aiSettings(baseEnv({ ...key, AI_MODEL: " qwen3.8-flash " })).model).toBe("qwen3.8-flash");
+    expect(aiSettings(baseEnv({ ...key, AI_MODEL: "qwen/qwen3.8-flash" })).model).toBe("qwen/qwen3.8-flash");
+    for (const wrong of ["", "x", "not a model!", "a".repeat(81), "model;drop"]) expect(aiSettings(baseEnv({ ...key, AI_MODEL: wrong })).model).toBe("qwen3-vl-plus");
+  });
+
+  it("sends Qwen requests to Alibaba's own https address only", () => {
+    expect(qwenBase(baseEnv())).toBeUndefined();
+    expect(qwenBase(baseEnv({ QWEN_API_BASE: "https://dashscope-intl.aliyuncs.com" }))).toBe("https://dashscope-intl.aliyuncs.com/compatible-mode/v1");
+    expect(qwenBase(baseEnv({ QWEN_API_BASE: "https://dashscope-intl.aliyuncs.com/compatible-mode/v1/" }))).toBe("https://dashscope-intl.aliyuncs.com/compatible-mode/v1");
+    expect(qwenBase(baseEnv({ QWEN_API_BASE: "https://abc123.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1/chat/completions" }))).toBe("https://abc123.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1");
+    expect(qwenBase(baseEnv({ QWEN_API_BASE: " https://dashscope-us.aliyuncs.com " }))).toBe("https://dashscope-us.aliyuncs.com/compatible-mode/v1");
+    for (const wrong of ["http://dashscope-intl.aliyuncs.com", "https://evil.example.com", "https://aliyuncs.com.evil.example", "https://evilaliyuncs.com", "not a url", "ftp://x.aliyuncs.com"]) {
+      expect(qwenBase(baseEnv({ QWEN_API_BASE: wrong }))).toBeUndefined();
+    }
+  });
+
+  it("lets the tests point Qwen at a pretend Alibaba", () => {
+    expect(qwenBase(baseEnv({ QWEN_API_ORIGIN: "http://127.0.0.1:9999/compatible-mode/v1", QWEN_API_BASE: "https://evil.example.com" }))).toBe("http://127.0.0.1:9999/compatible-mode/v1");
   });
 
   it("compares secrets exactly", async () => {
