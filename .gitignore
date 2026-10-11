@@ -115,3 +115,6 @@ client/public/__manus__/version.json
 
 # Cloudflare Wrangler local state
 .wrangler/
+
+# Local Cloudflare Worker settings (test secrets for "wrangler dev")
+.dev.vars*

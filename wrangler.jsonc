@@ -2,6 +2,8 @@
   // Cloudflare Workers config. The site is a static single-page app built into dist/public.
   // The name must match the Worker connected in the Cloudflare dashboard.
   "name": "chadrey-wholesale",
+  // The Telegram product intake (see docs/telegram-product-intake.md). It only answers /api/telegram.
+  "main": "worker/index.ts",
   "compatibility_date": "2025-09-01",
   // Cloudflare runs this before every deploy, so it does not depend on a build command set in the dashboard.
   "build": {
@@ -9,11 +11,31 @@
   },
   "assets": {
     "directory": "./dist/public",
+    "binding": "ASSETS",
     // Unknown paths (/products, /admin/quotes, ...) get index.html so the client-side router can handle them.
     "not_found_handling": "single-page-application",
     // The build also writes a folder per page (/products/index.html). Serve those at /products with no redirect to /products/.
-    "html_handling": "drop-trailing-slash"
+    "html_handling": "drop-trailing-slash",
+    // Only this one address wakes the Worker. Every other address (including /api/trpc, used by older pages) is
+    // served straight from the files above, exactly as before.
+    "run_worker_first": ["/api/telegram"]
   },
-  // Branch builds run "wrangler preview". The site needs no variables or bindings, so nothing differs from production.
+  // Public settings only. The bot token, webhook secret, allowed Telegram ids and the Supabase key are NOT here:
+  // they are added in the Cloudflare dashboard as type "Secret" (Workers & Pages > chadrey-wholesale > Settings > Variables and Secrets).
+  "vars": {
+    "SUPABASE_URL": "https://pysfxmosoijbghfzfhge.supabase.co",
+    // Used when a Telegram message does not name a currency, a unit or a minimum order.
+    "DEFAULT_CURRENCY": "NGN",
+    "DEFAULT_UNIT": "pc",
+    "DEFAULT_MOQ": "1"
+    // Optional: the address used in the "Review it" link the bot sends. Without it, the address the message came through is used.
+    // "SITE_URL": "https://your-main-domain.com"
+  },
+  // Do not wipe variables that were added in the dashboard when the site is deployed from GitHub.
+  "keep_vars": true,
+  "observability": {
+    "enabled": true
+  },
+  // Branch builds run "wrangler preview". The site needs no extra bindings, so nothing differs from production.
   "previews": {}
 }
