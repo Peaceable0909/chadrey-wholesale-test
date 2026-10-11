@@ -24,7 +24,7 @@ import {
   updateProduct,
   type ProductInput,
 } from "./store";
-import { createTestEnv, type TestEnv } from "./testEnv";
+import { createTestEnv, strictLikeLimit, type TestEnv } from "./testEnv";
 import type { D1Database } from "./types";
 
 let test: TestEnv;
@@ -183,10 +183,39 @@ describe("products", () => {
     expect(await freeSlug(db, "fresh-one")).toBe("fresh-one");
   });
 
+  it("finds a free web address for a very long name (D1 limits LIKE patterns to 50 bytes)", async () => {
+    const long = `womens-cotton-short-sleeve-round-neck-t-shirt-plain-basic-summer-top`;
+    expect(long.length).toBeGreaterThan(50);
+    await add({ name: "Long", slug: long });
+    await add({ name: "Long 2", slug: `${long}-2` });
+    await add({ name: "Different", slug: `${long}x`.slice(0, 80) });
+    expect(await freeSlug(db, long)).toBe(`${long}-3`);
+    const eighty = "a".repeat(80);
+    expect(await freeSlug(db, eighty)).toBe(eighty);
+  });
+
+  it("only counts web addresses that start with the same text", async () => {
+    await add({ slug: "bag" });
+    await add({ slug: "bagpipe" });
+    await add({ slug: "bag-2" });
+    await add({ slug: "a-bag" });
+    expect(await freeSlug(db, "bag")).toBe("bag-3");
+  });
+
   it("looks up the basics for the bot", async () => {
     const id = await add({ name: "Basics", slug: "basics", is_active: false });
     expect(await productBasics(db, id)).toEqual({ id, slug: "basics", name: "Basics", is_active: false });
     expect(await productBasics(db, uuid(424242))).toBeNull();
+  });
+});
+
+describe("the test database", () => {
+  it("refuses a LIKE pattern over 50 bytes, as Cloudflare's does", () => {
+    const strict = strictLikeLimit(db);
+    expect(() => strict.prepare("SELECT 1 WHERE 'x' LIKE ?").bind(`%${"a".repeat(60)}%`)).toThrow(/too complex/);
+    expect(() => strict.prepare("SELECT 1 WHERE 'x' LIKE ?").bind("%short%")).not.toThrow();
+    // Long text in a statement without LIKE is fine
+    expect(() => strict.prepare("SELECT ?").bind("a".repeat(500))).not.toThrow();
   });
 });
 
@@ -236,6 +265,17 @@ describe("lists", () => {
     expect(await found("marshmallow")).toEqual(["Sugar Marshmallow"]);
     expect(await found("sweet")).toEqual(["Plain", "Zebra"]);
     expect(await found("SNACK")).toEqual(["Sugar Marshmallow"]);
+  });
+
+  it("searches with a long phrase (D1 limits LIKE patterns to 50 bytes)", async () => {
+    const name = "Stainless Steel Vacuum Insulated Water Bottle 500ml with Bamboo Lid";
+    await add({ name, slug: "bottle" });
+    await add({ name: "Short", slug: "short" });
+    const found = async (search: string) => (await listProducts(db, { active: true, search, limit: 10, offset: 0 })).rows.map(row => row.name);
+    expect(await found(name)).toEqual([name]);
+    expect(await found(name.toUpperCase())).toEqual([name]);
+    expect(await found("ผ้าฝ้ายคุณภาพดีสำหรับเสื้อยืดแขนสั้นคอกลมสีพื้นฐาน")).toEqual([]);
+    expect(await found(`${name} that does not exist`)).toEqual([]);
   });
 
   it("treats % and _ in a search as plain characters", async () => {

@@ -16,7 +16,7 @@ type ListGroupProps = {
 export function ListGroup({ header, footer, className, children }: ListGroupProps) {
   return (
     <section className={className}>
-      {header && <h3 className="px-4 pb-2 text-footnote font-medium uppercase tracking-wide text-label-2">{header}</h3>}
+      {header && <h2 className="px-4 pb-2 text-footnote font-medium uppercase tracking-wide text-label-2">{header}</h2>}
       <div className="overflow-hidden rounded-group bg-surface">{children}</div>
       {footer && <p className="px-4 pt-2 text-footnote text-label-2">{footer}</p>}
     </section>

@@ -1,9 +1,9 @@
 import * as React from "react";
 import { categoryMeta } from "@/lib/categories";
 import type { Product } from "@/lib/catalogue";
+import { imageFit } from "@/lib/catalogueView";
 import { photoAttributes, type PhotoVariant } from "@/lib/photos";
 import { cn } from "@/lib/utils";
-import { toneText, toneWash } from "@/components/ios/tone";
 
 /**
  * Photos are the heaviest thing on the site, so a photo is only requested when it is about to scroll into view.
@@ -45,7 +45,12 @@ type ProductImageProps = {
   /** Index into the product's images. */
   index?: number;
   className?: string;
-  fit?: "cover" | "contain";
+  /** "auto" fills the frame with a photo that is about square and shows any other shape whole (nothing is cut off or stretched). */
+  fit?: "cover" | "contain" | "auto";
+  /** Fade the photo in when it arrives. The container behind it supplies the soft background. */
+  fade?: boolean;
+  /** Say in words when there is no photo or it could not be loaded (for cards; thumbnails are too small for text). */
+  caption?: boolean;
   /** Load straight away, for the one photo that is the main content of a page. */
   priority?: boolean;
   /** How far outside the screen the photo may be before it starts loading (CSS margin syntax). */
@@ -58,11 +63,13 @@ type ProductImageProps = {
   onLoaded?: () => void;
 };
 
-/** The product photo, or a soft category-coloured tile when the product has none yet or the photo cannot be loaded. */
-export function ProductImage({ product, index = 0, className, fit = "cover", priority = false, margin = "150px", hold = false, variant = "card", onLoaded }: ProductImageProps) {
+/** The product photo, or a quiet neutral tile when the product has none yet or the photo cannot be loaded. */
+export function ProductImage({ product, index = 0, className, fit = "cover", fade = false, caption = false, priority = false, margin = "150px", hold = false, variant = "card", onLoaded }: ProductImageProps) {
   const image = product.images[index];
   const [brokenUrl, setBrokenUrl] = React.useState<string | null>(null);
   const [near, setNear] = React.useState(priority || typeof IntersectionObserver === "undefined");
+  const [loadedUrl, setLoadedUrl] = React.useState<string | null>(null);
+  const [autoFit, setAutoFit] = React.useState<"cover" | "contain">("contain");
   const holder = React.useRef<HTMLDivElement>(null);
 
   React.useEffect(() => {
@@ -72,23 +79,34 @@ export function ProductImage({ product, index = 0, className, fit = "cover", pri
 
   if (image && image.url !== brokenUrl) {
     if (!near || hold) return <div ref={holder} aria-hidden className={cn("size-full bg-fill-4", className)} />;
+    const arrived = (element: HTMLImageElement) => {
+      if (fit === "auto") setAutoFit(imageFit(element.naturalWidth, element.naturalHeight));
+      setLoadedUrl(image.url);
+      onLoaded?.();
+    };
+    const shown = fit === "auto" ? autoFit : fit;
     return (
       <img
         {...photoAttributes(image.url, variant)}
+        // A photo that was already in the browser's memory is complete before React can listen for its load event.
+        ref={element => {
+          if (element?.complete && element.naturalWidth > 0 && loadedUrl !== image.url) arrived(element);
+        }}
         alt={image.alt || (image.label ? `${product.name} – ${image.label}` : product.name)}
         decoding="async"
         fetchPriority={priority ? "high" : undefined}
         draggable={false}
-        onLoad={onLoaded}
+        onLoad={event => arrived(event.currentTarget)}
         onError={() => setBrokenUrl(image.url)}
-        className={cn("size-full", fit === "cover" ? "object-cover" : "object-contain", className)}
+        className={cn("size-full", shown === "cover" ? "object-cover" : "object-contain", fade && "transition-opacity duration-300", fade && loadedUrl !== image.url && "opacity-0", className)}
       />
     );
   }
-  const { icon: Icon, tone } = categoryMeta(product.category);
+  const { icon: Icon } = categoryMeta(product.category);
   return (
-    <div role="img" aria-label={product.name} className={cn("grid size-full place-items-center bg-gradient-to-br", toneWash[tone], className)}>
-      <Icon className={cn("size-[34%] opacity-70", toneText[tone])} strokeWidth={1.2} aria-hidden />
+    <div role="img" aria-label={image ? `${product.name} (photo unavailable)` : product.name} className={cn("flex size-full flex-col items-center justify-center gap-1.5 bg-fill-4 text-label-3", className)}>
+      <Icon className="size-[34%] max-h-16 max-w-16" strokeWidth={1.2} aria-hidden />
+      {caption && <span className="text-caption font-medium text-label-2">{image ? "Photo unavailable" : "No photo yet"}</span>}
     </div>
   );
 }

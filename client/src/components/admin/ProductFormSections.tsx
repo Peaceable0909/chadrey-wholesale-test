@@ -58,7 +58,7 @@ function DescriptionField({ value, onChange }: { value: string; onChange: (value
           <Button variant="gray" size="sm" aria-label="Make selected text bold" onClick={() => apply("bold")}>
             <strong>B</strong>
           </Button>
-          <Button variant="gray" size="sm" aria-label="Turn selected lines into bullets" onClick={() => apply("bullet")}>
+          <Button variant="gray" size="sm" aria-label="List: turn selected lines into bullets" onClick={() => apply("bullet")}>
             • List
           </Button>
         </div>

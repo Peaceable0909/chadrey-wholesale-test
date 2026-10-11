@@ -67,7 +67,7 @@ describe("saving a product", () => {
 
   it("creates a product and returns its id and web address", async () => {
     answer = () => ({ id: "new-id", slug: "rattan-bag" });
-    expect(await api.createProductRecord(fields)).toEqual({ id: "new-id", slug: "rattan-bag" });
+    expect(await api.createProductRecord(fields)).toEqual({ id: "new-id", slug: "rattan-bag", existed: false });
     expect(calls[0]).toMatchObject({ path: "/api/admin/products", options: { method: "POST", admin: true } });
     expect(calls[0].options.json).not.toHaveProperty("id");
     expect(calls[0].options.json).not.toHaveProperty("slug");
@@ -77,6 +77,11 @@ describe("saving a product", () => {
     answer = () => ({ id: "old-id", slug: "premium-lunch-box" });
     await api.createProductRecord(fields, { id: "old-id", slug: "premium-lunch-box", createdAt: "2026-08-27T21:51:31.742Z" });
     expect(calls[0].options.json).toMatchObject({ id: "old-id", slug: "premium-lunch-box", created_at: "2026-08-27T21:51:31.742Z" });
+  });
+
+  it("says when the product was already there", async () => {
+    answer = () => ({ id: "old-id", slug: "premium-lunch-box", existed: true });
+    expect(await api.createProductRecord(fields, { id: "old-id" })).toEqual({ id: "old-id", slug: "premium-lunch-box", existed: true });
   });
 
   it("updates a product", async () => {

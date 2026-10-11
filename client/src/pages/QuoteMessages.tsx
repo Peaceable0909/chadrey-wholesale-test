@@ -53,7 +53,7 @@ export default function QuoteMessages() {
           <p className="mx-auto max-w-xs text-center text-footnote text-label-2">Messages you send here go to the Chadrey team.</p>
           {sent.map(message => (
             <div key={message.id} className="flex justify-end">
-              <p className="max-w-[78%] whitespace-pre-wrap break-words rounded-[20px] rounded-br-[6px] bg-tint px-4 py-2.5 text-body text-white">{message.body}</p>
+              <p className="max-w-[78%] whitespace-pre-wrap break-words rounded-[20px] rounded-br-[6px] bg-navy px-4 py-2.5 text-body text-white dark:bg-tint dark:text-on-tint">{message.body}</p>
             </div>
           ))}
           <div ref={endRef} />
@@ -83,7 +83,7 @@ export default function QuoteMessages() {
             type="submit"
             aria-label="Send message"
             disabled={!body.trim() || createMessage.isPending}
-            className="press grid size-11 shrink-0 place-items-center rounded-full bg-tint text-white disabled:bg-fill-1 disabled:text-label-3">
+            className="press grid size-11 shrink-0 place-items-center rounded-full bg-tint text-on-tint disabled:bg-fill-1 disabled:text-label-3">
             <ArrowUp className="size-5" strokeWidth={2.6} />
           </button>
         </div>

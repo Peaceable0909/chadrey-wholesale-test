@@ -14,14 +14,14 @@ export function Chip({ selected = false, count, icon, className, children, type 
       type={type}
       aria-pressed={selected}
       className={cn(
-        "press inline-flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-4 text-subhead font-medium transition-colors",
-        selected ? "bg-tint text-white" : "bg-surface text-label shadow-[inset_0_0_0_0.5px_var(--separator-strong)] hover:bg-fill-4",
+        "press inline-flex h-10 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border px-4 text-subhead font-medium transition-colors",
+        selected ? "border-tint bg-tint font-semibold text-on-tint" : "border-separator-strong bg-surface text-label hover:bg-fill-4",
         className,
       )}
       {...props}>
       {icon}
       {children}
-      {count !== undefined && <span className={cn("text-footnote", selected ? "text-white/80" : "text-label-2")}>{count}</span>}
+      {count !== undefined && <span className={cn("text-footnote tabular-nums", selected ? "text-on-tint" : "text-label-2")}>{count}</span>}
     </button>
   );
 }

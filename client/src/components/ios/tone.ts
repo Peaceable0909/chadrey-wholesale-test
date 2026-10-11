@@ -1,8 +1,13 @@
 import type { Tone } from "@/lib/categories";
 
+/*
+ * Colour maps for the status and category tones. The tone names are historical (they began as iOS system colours);
+ * the actual colours come from the tokens in index.css, where blue is the brand navy and orange is the brand orange.
+ */
+
 /** Tinted chip: soft background with text that stays readable (WCAG AA). */
 export const toneSoft: Record<Tone, string> = {
-  blue: "bg-ios-blue/12 text-ios-blue-text",
+  blue: "bg-ios-blue/10 text-ios-blue-text",
   green: "bg-ios-green/14 text-ios-green-text",
   orange: "bg-ios-orange/14 text-ios-orange-text",
   red: "bg-ios-red/12 text-ios-red-text",
@@ -14,30 +19,31 @@ export const toneSoft: Record<Tone, string> = {
   gray: "bg-ios-gray/14 text-ios-gray-text",
 };
 
-/** Settings-style icon tile: solid colour with a white glyph. */
+/** Icon tile: solid colour with a glyph that contrasts with it (navy on orange and amber, white on the rest). */
 export const toneSolid: Record<Tone, string> = {
   blue: "bg-ios-blue text-white",
-  green: "bg-ios-green text-white",
-  orange: "bg-ios-orange text-white",
+  // Green stays green for success messages and badges (toneSoft). As a decorative icon tile it joins the cool brand blues.
+  green: "bg-ios-teal text-white",
+  orange: "bg-tint text-on-tint",
   red: "bg-ios-red text-white",
   indigo: "bg-ios-indigo text-white",
   teal: "bg-ios-teal text-white",
-  pink: "bg-ios-pink text-white",
+  pink: "bg-tint text-on-tint",
   purple: "bg-ios-purple text-white",
-  yellow: "bg-ios-yellow text-white",
+  yellow: "bg-ios-yellow text-navy",
   gray: "bg-ios-gray text-white",
 };
 
 /** Soft gradient used behind product placeholders and category tiles. */
 export const toneWash: Record<Tone, string> = {
-  blue: "from-ios-blue/20 to-ios-blue/5",
+  blue: "from-ios-blue/12 to-ios-blue/4",
   green: "from-ios-green/22 to-ios-green/5",
   orange: "from-ios-orange/22 to-ios-orange/5",
   red: "from-ios-red/18 to-ios-red/5",
-  indigo: "from-ios-indigo/20 to-ios-indigo/5",
-  teal: "from-ios-teal/22 to-ios-teal/5",
+  indigo: "from-ios-indigo/16 to-ios-indigo/5",
+  teal: "from-ios-teal/20 to-ios-teal/5",
   pink: "from-ios-pink/18 to-ios-pink/5",
-  purple: "from-ios-purple/20 to-ios-purple/5",
+  purple: "from-ios-purple/18 to-ios-purple/5",
   yellow: "from-ios-yellow/30 to-ios-yellow/8",
   gray: "from-ios-gray/22 to-ios-gray/6",
 };

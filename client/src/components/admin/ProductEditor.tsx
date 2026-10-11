@@ -6,6 +6,7 @@ import { ProductFormSections } from "@/components/admin/ProductFormSections";
 import { ConfirmSheet } from "@/components/admin/ConfirmSheet";
 import type { Product } from "@/lib/catalogue";
 import { prepareImage } from "@/lib/imageCompress";
+import { photoIdFor } from "@/lib/stableId";
 import { draftFromProduct, fieldsFromDraft, type ProductDraft } from "@/lib/productDraft";
 import { productHref } from "@/lib/productRoute";
 import { photoSrc } from "@/lib/photos";
@@ -66,11 +67,17 @@ export function ProductEditor({ product, knownCategories, onClose, onChanged }: 
     setPhotoBusy(true);
     setError("");
     try {
-      await task();
-      await onChanged();
-      toast.success(success);
-    } catch (caught) {
-      setError(errorMessage(caught));
+      let done = false;
+      try {
+        await task();
+        done = true;
+      } catch (caught) {
+        setError(errorMessage(caught));
+      }
+      // Part of the work may be finished even when the task stopped part-way (some of five photos arrived), so always
+      // show what is really there now instead of the list as it was.
+      await Promise.resolve(onChanged()).catch(() => undefined);
+      if (done) toast.success(success);
     } finally {
       setPhotoBusy(false);
     }
@@ -80,9 +87,13 @@ export function ProductEditor({ product, knownCategories, onClose, onChanged }: 
     if (!product || !list?.length) return;
     const files = Array.from(list).filter(file => file.type.startsWith("image/"));
     await runPhotoTask(async () => {
-      const prepared = await Promise.all(files.map(file => prepareImage(file)));
+      // One photo at a time: shrink it, send it, move on. Doing them all at once can run a phone out of memory.
+      // Each photo's id comes from its content, so choosing the same files again after a failure adds nothing twice.
       // The first photo of a product becomes its cover by itself; later ones go after the existing photos.
-      for (const file of prepared) await uploadProductPhoto(product.id, file);
+      for (const original of files) {
+        const imageId = await photoIdFor(product.id, original);
+        await uploadProductPhoto(product.id, await prepareImage(original), { imageId });
+      }
     }, files.length === 1 ? "Photo added" : "Photos added");
   }
 

@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { forgetAdmins } from "./adminAuth";
-import { handleApi, parseProductInput } from "./api";
+import { handleApi, parseProductInput, cacheSeconds } from "./api";
 import { addImage, insertProduct, type ProductInput } from "./store";
 import { ADMIN_ID, USER_ID, fakeSupabase, makeToken, type PretendSupabase } from "./testAuth";
 import { JPEG_BYTES, PNG_BYTES, createTestEnv, type TestEnv } from "./testEnv";
@@ -612,6 +612,62 @@ describe("sharing answers between visitors", () => {
     const withSignIn = await visit("/api/catalogue/products", cache, db, { authorization: `Bearer ${adminToken}`, cookie: "a=b", "accept-language": "th" });
     expect(counter.queries).toBe(afterFirst);
     expect(JSON.parse(withSignIn.body).total).toBe(1);
+  });
+
+  it("treats the same question written differently as one", async () => {
+    await seed({ name: "Tote Bag", slug: "tote" });
+    const cache = fakeCache();
+    const { db, counter } = countingDb();
+    await visit("/api/catalogue/products?q=Tote", cache, db);
+    const afterFirst = counter.queries;
+    for (const path of [
+      "/api/catalogue/products?q=tote",
+      "/api/catalogue/products?q=TOTE&x=1&utm_source=ad",
+      "/api/catalogue/products?size=24&page=0&q=tote&sort=newest&category=All",
+      "/api/catalogue/products?q=%20tote%20",
+    ]) {
+      expect(JSON.parse((await visit(path, cache, db)).body).total, path).toBe(1);
+    }
+    expect(counter.queries).toBe(afterFirst);
+    expect(cache.puts).toHaveLength(1);
+  });
+
+  it("does not let a huge page number or random extras make every request look new", async () => {
+    const cache = fakeCache();
+    for (const query of ["?page=100000", "?page=999999", "?page=200&junk=1", "?junk=2&page=500"]) await visit(`/api/catalogue/products${query}`, cache);
+    expect(cache.puts).toHaveLength(1);
+  });
+
+  it("says in a header whether the answer came from memory", async () => {
+    const cache = fakeCache();
+    const note = async (memory: ReturnType<typeof fakeCache> | null) => {
+      const pending: Promise<unknown>[] = [];
+      const response = await handleApi(new Request("https://shop.test/api/catalogue/categories"), test.env, { waitUntil: promise => void pending.push(promise) }, { admin: supabase.deps, cache: memory });
+      await Promise.all(pending);
+      return response.headers.get("x-shop-cache");
+    };
+    expect(await note(cache)).toBe("miss");
+    expect(await note(cache)).toBe("hit");
+    expect(await note(null)).toBe("off");
+  });
+
+  it("can be told to remember for another number of seconds, or not at all", async () => {
+    const cache = fakeCache();
+    const ask = async (setting: string | undefined) => {
+      const pending: Promise<unknown>[] = [];
+      const response = await handleApi(new Request("https://shop.test/api/catalogue/categories"), { ...test.env, SHOP_CACHE_SECONDS: setting }, { waitUntil: promise => void pending.push(promise) }, { admin: supabase.deps, cache });
+      await Promise.all(pending);
+      return response.headers.get("x-shop-cache");
+    };
+    expect(await ask("5")).toBe("miss");
+    expect(cache.puts.map(entry => entry.cacheControl)).toEqual(["public, max-age=5"]);
+    expect(await ask("0")).toBe("off");
+    expect(cacheSeconds({ SHOP_CACHE_SECONDS: "abc" })).toBe(30);
+    expect(cacheSeconds({ SHOP_CACHE_SECONDS: "-1" })).toBe(30);
+    expect(cacheSeconds({ SHOP_CACHE_SECONDS: "9999" })).toBe(30);
+    expect(cacheSeconds({ SHOP_CACHE_SECONDS: "" })).toBe(30);
+    expect(cacheSeconds({})).toBe(30);
+    expect(cacheSeconds({ SHOP_CACHE_SECONDS: "0" })).toBe(0);
   });
 
   it("never remembers a failure", async () => {

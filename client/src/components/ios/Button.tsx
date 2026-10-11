@@ -9,20 +9,23 @@ export const buttonStyles = cva(
   {
     variants: {
       variant: {
-        filled: "bg-tint text-white hover:bg-tint-pressed active:bg-tint-pressed",
-        tinted: "bg-tint-soft text-tint-text hover:bg-tint/20",
+        /** The brand orange. Its label is navy because white on this orange is only 2.8:1 (navy is 6.1:1). */
+        filled: "bg-tint text-on-tint hover:bg-tint-pressed active:bg-tint-pressed",
+        tinted: "bg-tint-soft text-label hover:bg-tint/25",
         gray: "bg-fill-3 text-label hover:bg-fill-2",
         plain: "text-tint-text hover:bg-tint-soft",
-        outline: "border border-separator-strong bg-surface text-label hover:bg-fill-4",
+        outline: "border border-control bg-surface text-label hover:bg-fill-4",
+        /** Deep navy, for a strong secondary action on white. */
+        navy: "bg-navy text-white hover:bg-navy/90 dark:bg-white/10 dark:hover:bg-white/15",
         destructive: "bg-ios-red-solid text-white hover:opacity-90",
-        /** For use on coloured or dark backgrounds */
-        light: "bg-white text-[#0066cc] hover:bg-white/90",
-        glass: "bg-white/20 text-white hover:bg-white/30",
+        /** For use on navy or other dark backgrounds */
+        light: "bg-white text-navy hover:bg-white/90",
+        glass: "bg-white/10 text-white ring-1 ring-inset ring-white/35 hover:bg-white/20",
       },
       size: {
-        lg: "h-[50px] rounded-[14px] px-6 text-headline",
+        lg: "h-12 rounded-control px-6 text-headline",
         md: "h-11 rounded-control px-5 text-callout",
-        sm: "h-8 rounded-full px-3.5 text-subhead",
+        sm: "h-9 rounded-control px-3.5 text-subhead",
         // Text buttons may share a row (two `full` buttons split it) but never shrink below their label; icon buttons stay round.
         icon: "size-11 shrink-0 rounded-full",
         "icon-sm": "size-9 shrink-0 rounded-full",

@@ -88,7 +88,7 @@ function MobileTabBar({ path }: { path: string }) {
           {tab("/admin", "Overview", LayoutDashboard, path === "/admin")}
           {tab("/admin/products", "Products", Package, path === "/admin/products")}
           <Link href="/admin/products/new" aria-label="Add product" className="flex h-full items-center justify-center">
-            <span className="press grid size-12 -translate-y-1.5 place-items-center rounded-full bg-tint text-white shadow-float">
+            <span className="press grid size-12 -translate-y-1.5 place-items-center rounded-full bg-tint text-on-tint shadow-float">
               <PackagePlus className="size-6" strokeWidth={2} />
             </span>
           </Link>

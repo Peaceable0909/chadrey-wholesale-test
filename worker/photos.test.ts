@@ -184,10 +184,19 @@ describe("smaller copies", () => {
     expect(cache.puts).toHaveLength(1);
   });
 
-  it("shows the full photo when there is no resizer at all (a preview)", async () => {
+  it("shows the full photo when there is no resizer at all (a preview), for only a few minutes", async () => {
+    const cache = fakeCache();
     const { key } = await store(JPEG_BYTES);
-    const response = await fetchPhoto(path(key, "?w=320"), { env: { IMAGES: undefined } });
+    const response = await fetchPhoto(path(key, "?w=320"), { env: { IMAGES: undefined }, cache });
     expect(new Uint8Array(await response.arrayBuffer())).toEqual(JPEG_BYTES);
+    expect(response.headers.get("cache-control")).toBe("public, max-age=300");
+    expect(cache.puts).toHaveLength(0);
+  });
+
+  it("still keeps the full-size photo for a year when that is what was asked for", async () => {
+    const { key } = await store(JPEG_BYTES);
+    const response = await fetchPhoto(path(key), { env: { IMAGES: undefined } });
+    expect(response.headers.get("cache-control")).toBe("public, max-age=31536000, immutable");
   });
 
   it("sends animated GIFs untouched", async () => {

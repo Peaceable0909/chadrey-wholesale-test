@@ -20,7 +20,7 @@ type StatProps = { href: string; label: string; value: number | undefined; hint:
 function Stat({ href, label, value, hint, highlight }: StatProps) {
   return (
     <Link href={href} className="press block">
-      <Card className={cn("h-full p-4", highlight && "bg-tint text-white")}>
+      <Card className={cn("h-full p-4", highlight && "bg-navy text-white dark:bg-raised")}>
         <p className={cn("text-footnote font-medium", highlight ? "text-white/80" : "text-label-2")}>{label}</p>
         <p className="mt-1 text-largetitle font-bold tabular-nums">{value ?? "–"}</p>
         <p className={cn("mt-0.5 text-footnote", highlight ? "text-white/80" : "text-label-2")}>{hint}</p>

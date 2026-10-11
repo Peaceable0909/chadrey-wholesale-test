@@ -64,7 +64,9 @@ admin screen ever says the database "used up today's free allowance", that is th
    alter table public.quote_request_items drop constraint if exists quote_request_items_product_id_fkey;
    ```
 3. **Admin → Products → "Copy now"** brings the products from the old store across, with their photos, ids, web
-   addresses and dates. It is safe to press again: nothing is copied twice.
+   addresses and dates. It is safe to press again: nothing is copied twice. If one product cannot be copied (a photo is
+   missing in the old store, say) the others still are, the unfinished copy is removed again, and the message names the
+   product and the reason. "Not now" hides the banner for this visit only.
 4. Open the shop and check a product page.
 5. **Telegram bot:** follow [telegram-product-intake.md](telegram-product-intake.md). If you already added
    `SUPABASE_SERVICE_KEY` to Cloudflare for the old bot, you can delete it: the bot no longer uses it.
@@ -88,7 +90,7 @@ admin screen ever says the database "used up today's free allowance", that is th
 | "used up today's free allowance" | See the table above. It resets at midnight UTC. |
 | Photos are big/slow | The resizer may be over its monthly free allowance, or unavailable on a preview. Photos still show, at full size. |
 | A product will not delete | It is part of a quote request. Hide it instead. |
-| The "Copy now" banner never goes away | The copy stopped part-way (for example a photo could not be downloaded). Press it again; the message says what happened. |
+| The "Copy now" banner never goes away | A product could not be copied (for example a photo could not be downloaded). The message names it and says why. Fix that (or delete the product in the old store) and press the button again. |
 
 ## Running it on your computer
 
@@ -122,6 +124,15 @@ so use the Cloudflare preview address when you want to test changes safely.
 | `client/src/lib/shopApi.ts` | How the website talks to the Worker (adds the signed-in session, retries once if it just ran out). |
 | `client/src/lib/legacyCopy.ts` | The "Copy now" tool. Remove it, `LegacyCopyCard`, and the old Supabase product tables when Stage 3 switches Supabase off. |
 
+* D1 refuses a `LIKE` or `GLOB` pattern longer than **50 bytes**, which a long product name or search easily exceeds.
+  Search therefore uses `instr(lower(column), lower(?))` and the free-web-address lookup uses a range test; do not
+  reintroduce `LIKE` with text a person typed. The local test database enforces the same limit
+  (`strictLikeLimit` in `worker/testEnv.ts`), so a mistake fails the tests instead of the live shop.
+* Shopper answers are remembered for 30 seconds in Cloudflare's per-data-centre memory (`caches.default`), under a
+  cleaned-up address (only the parts that change the answer, in a fixed order, page number capped at 200) so that extra
+  or reordered parts of an address cannot bypass it. The `x-shop-cache` header on `/api/catalogue/*` says `hit`, `miss`
+  or `off`; request the same address twice to check. The optional setting `SHOP_CACHE_SECONDS` changes the 30 seconds (`0` turns sharing off). On the `workers.dev` address it works (checked on a real preview:
+  `miss`, then `hit`).
 * Rows keep the shape Supabase used (snake_case fields, a nested `product_images` list, `public_url`), so
   `mapProductRow` in `client/src/lib/catalogue.ts` did not change.
 * Photos are named `products/<product id>/<photo id>.<kind>` and never overwritten, which is why they can be cached

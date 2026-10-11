@@ -65,8 +65,11 @@ export default function AdminProductCreate() {
 
       // The product starts hidden, so nobody sees it half-finished while its photos upload. It goes live at the end.
       setProgress({ stage: "Saving product…", percent: 22 });
-      const created = await createProductRecord({ ...fields, isActive: false });
-      createdId = created.id;
+      // The id is chosen here and remembered first, so if the reply is lost on a weak connection the half-made product
+      // can still be removed (and sending the request again would not make a second one).
+      const newId = crypto.randomUUID();
+      createdId = newId;
+      const created = await createProductRecord({ ...fields, isActive: false }, { id: newId });
 
       const coverIndex = Math.max(0, photos.findIndex(photo => photo.id === coverId));
       let coverUrl: string | undefined;
@@ -90,7 +93,8 @@ export default function AdminProductCreate() {
       try {
         if (createdId) await deleteProductRecord(createdId);
       } catch (cleanupError) {
-        console.error("Cleanup after failed publish:", cleanupError);
+        // "Not found" just means the product was never made, which is the state we wanted.
+        if (!(cleanupError instanceof ApiError && cleanupError.status === 404)) console.error("Cleanup after failed publish:", cleanupError);
       }
       setError(publishProblem(caught));
     } finally {
@@ -127,14 +131,18 @@ export default function AdminProductCreate() {
               <PriceLabel pricing={published.fields.pricing} />
             </div>
           </div>
-          <p className="mt-4 text-body text-label-2">It is live in the store now.</p>
+          <p className="mt-4 text-body text-label-2">
+            {published.fields.isActive ? "It is live in the store now." : "Saved as hidden. Shoppers cannot see it until you turn it on in Products."}
+          </p>
           <div className="mt-6 flex flex-col gap-3">
             <Button size="lg" full onClick={addAnother}>
               <PackagePlus className="size-5" aria-hidden /> Add another product
             </Button>
-            <ButtonLink href={productHref(published.slug)} variant="gray" size="lg" full>
-              View in store
-            </ButtonLink>
+            {published.fields.isActive && (
+              <ButtonLink href={productHref(published.slug)} variant="gray" size="lg" full>
+                View in store
+              </ButtonLink>
+            )}
             <ButtonLink href="/admin/products" variant="plain" size="lg" full>
               All products
             </ButtonLink>

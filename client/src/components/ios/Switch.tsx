@@ -2,12 +2,12 @@ import * as React from "react";
 import * as SwitchPrimitive from "@radix-ui/react-switch";
 import { cn } from "@/lib/utils";
 
-/** The familiar green iOS toggle. */
+/** The familiar iOS-style toggle, in brand navy when on (orange in dark mode, where navy would disappear). */
 export function Switch({ className, ...props }: React.ComponentProps<typeof SwitchPrimitive.Root>) {
   return (
     <SwitchPrimitive.Root
       className={cn(
-        "relative h-[31px] w-[51px] shrink-0 rounded-full bg-fill-2 outline-offset-2 transition-colors duration-200 data-[state=checked]:bg-ios-green disabled:cursor-not-allowed disabled:opacity-40",
+        "relative h-[31px] w-[51px] shrink-0 rounded-full bg-fill-2 outline-offset-2 transition-colors duration-200 data-[state=checked]:bg-navy dark:data-[state=checked]:bg-tint disabled:cursor-not-allowed disabled:opacity-40",
         className,
       )}
       {...props}>

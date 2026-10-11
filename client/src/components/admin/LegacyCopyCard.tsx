@@ -3,14 +3,14 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Download } from "lucide-react";
 import { toast } from "sonner";
 import { Button, Notice } from "@/components/ios";
-import { copyLegacyProduct, findUncopied, type CopyProgress } from "@/lib/legacyCopy";
-import { errorMessage } from "@/lib/supabaseCompat";
+import { copyAllLegacy, describeCopyProblems, findUncopied, type CopyProgress } from "@/lib/legacyCopy";
 
 const DISMISSED = "legacy-copy-dismissed";
 
+/** "Not now" only lasts for this visit, so a product left behind by mistake is offered again next time. */
 function wasDismissed(): boolean {
   try {
-    return window.localStorage.getItem(DISMISSED) === "1";
+    return window.sessionStorage.getItem(DISMISSED) === "1";
   } catch {
     return false;
   }
@@ -33,16 +33,10 @@ export function LegacyCopyCard({ enabled }: { enabled: boolean }) {
 
   async function copyAll() {
     setError("");
-    let copied = 0;
     try {
-      for (let index = 0; index < items.length; index += 1) {
-        setPosition({ index, count: items.length });
-        await copyLegacyProduct(items[index], setProgress);
-        copied += 1;
-      }
-      toast.success(copied === 1 ? "Copied 1 product to the new store" : `Copied ${copied} products to the new store`);
-    } catch (caught) {
-      setError(`${errorMessage(caught, "The copy did not finish.")} Nothing is lost: press the button again to carry on.`);
+      const summary = await copyAllLegacy(items, { onProgress: setProgress, onPosition: (index, count) => setPosition({ index, count }) });
+      if (summary.copied) toast.success(summary.copied === 1 ? "Copied 1 product to the new store" : `Copied ${summary.copied} products to the new store`);
+      setError(describeCopyProblems(summary));
     } finally {
       setProgress(null);
       setPosition(null);
@@ -52,7 +46,7 @@ export function LegacyCopyCard({ enabled }: { enabled: boolean }) {
 
   function dismiss() {
     try {
-      window.localStorage.setItem(DISMISSED, "1");
+      window.sessionStorage.setItem(DISMISSED, "1");
     } catch {
       // Remembering is a convenience only.
     }
