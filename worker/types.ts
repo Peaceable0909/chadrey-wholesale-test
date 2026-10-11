@@ -76,6 +76,8 @@ export type Env = {
   DEFAULT_CURRENCY?: string;
   DEFAULT_UNIT?: string;
   DEFAULT_MOQ?: string;
+  /** Optional. How many seconds shoppers share one answer (default 30). "0" turns sharing off, which tests use. */
+  SHOP_CACHE_SECONDS?: string;
   /** Optional. The website address used in the bot's "Review it" link. Defaults to the address Telegram called. */
   SITE_URL?: string;
   /** Only the tests change this, to point at a pretend Telegram. */

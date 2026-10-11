@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { forgetAdmins } from "./adminAuth";
-import { handleApi, parseProductInput } from "./api";
+import { handleApi, parseProductInput, cacheSeconds } from "./api";
 import { addImage, insertProduct, type ProductInput } from "./store";
 import { ADMIN_ID, USER_ID, fakeSupabase, makeToken, type PretendSupabase } from "./testAuth";
 import { JPEG_BYTES, PNG_BYTES, createTestEnv, type TestEnv } from "./testEnv";
@@ -649,6 +649,25 @@ describe("sharing answers between visitors", () => {
     expect(await note(cache)).toBe("miss");
     expect(await note(cache)).toBe("hit");
     expect(await note(null)).toBe("off");
+  });
+
+  it("can be told to remember for another number of seconds, or not at all", async () => {
+    const cache = fakeCache();
+    const ask = async (setting: string | undefined) => {
+      const pending: Promise<unknown>[] = [];
+      const response = await handleApi(new Request("https://shop.test/api/catalogue/categories"), { ...test.env, SHOP_CACHE_SECONDS: setting }, { waitUntil: promise => void pending.push(promise) }, { admin: supabase.deps, cache });
+      await Promise.all(pending);
+      return response.headers.get("x-shop-cache");
+    };
+    expect(await ask("5")).toBe("miss");
+    expect(cache.puts.map(entry => entry.cacheControl)).toEqual(["public, max-age=5"]);
+    expect(await ask("0")).toBe("off");
+    expect(cacheSeconds({ SHOP_CACHE_SECONDS: "abc" })).toBe(30);
+    expect(cacheSeconds({ SHOP_CACHE_SECONDS: "-1" })).toBe(30);
+    expect(cacheSeconds({ SHOP_CACHE_SECONDS: "9999" })).toBe(30);
+    expect(cacheSeconds({ SHOP_CACHE_SECONDS: "" })).toBe(30);
+    expect(cacheSeconds({})).toBe(30);
+    expect(cacheSeconds({ SHOP_CACHE_SECONDS: "0" })).toBe(0);
   });
 
   it("never remembers a failure", async () => {

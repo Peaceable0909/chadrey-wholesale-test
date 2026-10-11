@@ -47,6 +47,12 @@ export type ApiDeps = { admin: AdminDeps; /** Where shopper-facing answers are r
  */
 export const SHOP_CACHE_SECONDS = 30;
 
+/** The lifetime in force: the SHOP_CACHE_SECONDS setting if it is a number from 0 to 300, otherwise the default. 0 means "do not share". */
+export function cacheSeconds(env: Pick<Env, "SHOP_CACHE_SECONDS">): number {
+  const wanted = env.SHOP_CACHE_SECONDS === undefined || env.SHOP_CACHE_SECONDS.trim() === "" ? Number.NaN : Number(env.SHOP_CACHE_SECONDS);
+  return Number.isInteger(wanted) && wanted >= 0 && wanted <= 300 ? wanted : SHOP_CACHE_SECONDS;
+}
+
 export const MAX_PRODUCT_PHOTOS = 30;
 /** Nobody pages this deep through a catalogue; the limit keeps "page 99999" from being a different question every time. */
 const MAX_PAGE = 200;
@@ -457,7 +463,7 @@ const withCacheNote = (response: Response, note: "hit" | "miss" | "off"): Respon
   return new Response(response.body, { status: response.status, headers });
 };
 
-async function rememberedFor(request: Request, ctx: WorkerContext, cache: EdgeCache | null, address: string, answer: () => Promise<Response>): Promise<Response> {
+async function rememberedFor(request: Request, ctx: WorkerContext, cache: EdgeCache | null, seconds: number, address: string, answer: () => Promise<Response>): Promise<Response> {
   if (request.method !== "GET") return answer();
   if (!cache) return withCacheNote(await answer(), "off");
   // A plain GET of the cleaned-up address, so nothing about the visitor can split or poison what is remembered.
@@ -472,7 +478,7 @@ async function rememberedFor(request: Request, ctx: WorkerContext, cache: EdgeCa
   const fresh = await answer();
   if (fresh.ok) {
     const headers = new Headers(fresh.headers);
-    headers.set("cache-control", `public, max-age=${SHOP_CACHE_SECONDS}`);
+    headers.set("cache-control", `public, max-age=${seconds}`);
     ctx.waitUntil(cache.put(key, new Response(fresh.clone().body, { status: fresh.status, headers })).catch(() => undefined));
   }
   return withCacheNote(fresh, "miss");
@@ -493,7 +499,9 @@ export async function handleApi(request: Request, env: Env, ctx: WorkerContext, 
       });
     const rest = parts.slice(2);
     if (parts[1] === "catalogue") {
-      return await rememberedFor(request, ctx, deps.cache === undefined ? defaultEdgeCache() : deps.cache, cacheKeyFor(url, rest), async () => {
+      const seconds = cacheSeconds(env);
+      const cache = seconds === 0 ? null : deps.cache === undefined ? defaultEdgeCache() : deps.cache;
+      return await rememberedFor(request, ctx, cache, seconds, cacheKeyFor(url, rest), async () => {
         await ensureSchema(env.DB);
         return catalogueRoutes(request, env, url, rest);
       });
