@@ -146,6 +146,9 @@ If the token leaks, send `/revoke` to BotFather, then update `TELEGRAM_BOT_TOKEN
   keeps the key out of every reply and log line.
 * A message maps to a fixed product id (hash of chat and message id), so redelivery and album photos find the right
   product without any extra table.
+* Branch previews do not inherit production settings or secrets (Cloudflare's design). The website works the same on a
+  preview, but `/api/telegram` reports "not set up" there, so a preview can never write to the real shop. The bot only
+  works on the production address.
 * Secrets are kept across deploys by Cloudflare. `keep_vars` stops a deploy from wiping variables added by hand.
   Do not add `secrets.required` to `wrangler.jsonc`: it would fail every deploy until the secrets exist.
 * Local run: create `.dev.vars` (git-ignored) with the secrets and run `pnpm exec wrangler dev`.

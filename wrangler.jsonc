@@ -36,6 +36,7 @@
   "observability": {
     "enabled": true
   },
-  // Branch builds run "wrangler preview". The site needs no extra bindings, so nothing differs from production.
+  // Branch builds run "wrangler preview". Previews do not inherit the settings or secrets above, on purpose: the website
+  // works the same on a preview, but the Telegram bot is not configured there, so a branch preview can never reach the real shop.
   "previews": {}
 }
