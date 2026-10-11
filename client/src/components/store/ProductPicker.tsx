@@ -51,7 +51,7 @@ export function ProductPicker({ open, onOpenChange, onPick, title = "Choose a pr
                   inset={84}
                   leading={
                     <span className="size-14 shrink-0 overflow-hidden rounded-[12px] bg-fill-4">
-                      <ProductImage product={product} />
+                      <ProductImage product={product} variant="thumb" />
                     </span>
                   }
                   wrap

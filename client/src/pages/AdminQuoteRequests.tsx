@@ -6,6 +6,7 @@ import { useAuth } from "@/_core/hooks/useAuth";
 import { BackLink, Badge, ButtonLink, Card, EmptyState, ListGroup, ListRow, Notice, StatusBadge } from "@/components/ios";
 import { AdminLayout } from "@/components/layout/AdminLayout";
 import { ProductImage } from "@/components/store/ProductImage";
+import { photoSrc } from "@/lib/photos";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import { formatDate, formatDateTime, formatMoney, formatQty } from "@/lib/format";
 import { lineTotal, unitPriceFor } from "@/lib/pricing";
@@ -30,7 +31,7 @@ function LineCard({ item, index }: { item: InboxItem; index: number }) {
       <div className="flex items-start gap-3 p-4">
         {product ? (
           <span className="size-14 shrink-0 overflow-hidden rounded-[12px] bg-fill-4">
-            <ProductImage product={product} />
+            <ProductImage product={product} variant="thumb" />
           </span>
         ) : (
           <span className="size-14 shrink-0 rounded-[12px] bg-fill-4" />
@@ -55,7 +56,7 @@ function LineCard({ item, index }: { item: InboxItem; index: number }) {
         {photos.length > 0 && (
           <div className="no-scrollbar -mx-1 flex gap-2 overflow-x-auto p-1">
             {photos.map(image => (
-              <img key={image.id} src={image.url} alt={image.label || `${product?.name} preferred view`} className="size-16 shrink-0 rounded-[12px] bg-fill-4 object-cover" />
+              <img key={image.id} src={photoSrc(image.url, 160)} alt={image.label || `${product?.name} preferred view`} className="size-16 shrink-0 rounded-[12px] bg-fill-4 object-cover" />
             ))}
           </div>
         )}

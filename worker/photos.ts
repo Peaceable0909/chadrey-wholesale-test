@@ -1,4 +1,4 @@
-import { HttpError } from "./http";
+import { HttpError, defaultEdgeCache, type EdgeCache } from "./http";
 import type { Env, R2Bucket, WorkerContext } from "./types";
 
 /*
@@ -55,7 +55,7 @@ export async function removePhotos(bucket: R2Bucket, keys: string[]): Promise<vo
 
 /* Showing photos */
 
-export type PhotoCache = { match(request: Request): Promise<Response | undefined>; put(request: Request, response: Response): Promise<void> };
+export type PhotoCache = EdgeCache;
 export type PhotoDeps = { cache?: PhotoCache | null };
 
 const pickWidth = (raw: string | null): number | null => {
@@ -63,11 +63,6 @@ const pickWidth = (raw: string | null): number | null => {
   if (!raw || !Number.isFinite(wanted) || wanted <= 0) return null;
   return WIDTHS.find(width => width >= wanted) ?? WIDTHS[WIDTHS.length - 1];
 };
-
-function defaultCache(): PhotoCache | null {
-  const storage = (globalThis as { caches?: { default?: PhotoCache } }).caches;
-  return storage?.default ?? null;
-}
 
 const notFound = () => new Response("Not found", { status: 404, headers: { "cache-control": "no-store", "content-type": "text/plain; charset=utf-8" } });
 
@@ -100,7 +95,7 @@ export async function handlePhotoRequest(request: Request, env: Env, ctx: Worker
   const width = pickWidth(url.searchParams.get("w"));
   const acceptsWebp = /image\/webp/i.test(request.headers.get("accept") ?? "");
   const variant = width ? `${width}-${acceptsWebp ? "webp" : "std"}` : "full";
-  const cache = deps.cache === undefined ? defaultCache() : deps.cache;
+  const cache = deps.cache === undefined ? defaultEdgeCache() : deps.cache;
   const cacheKey = new Request(`${url.origin}/photos/${key}?v=${variant}`);
 
   const hit = await cache?.match(cacheKey);

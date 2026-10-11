@@ -35,4 +35,12 @@ export function errorResponse(error: unknown): Response {
   return json({ error: "Something went wrong on our side. Please try again in a minute." }, 500);
 }
 
+/** Cloudflare's per-data-centre memory for replies (the Worker's `caches.default`). */
+export type EdgeCache = { match(request: Request): Promise<Response | undefined>; put(request: Request, response: Response): Promise<void> };
+
+export function defaultEdgeCache(): EdgeCache | null {
+  const storage = (globalThis as { caches?: { default?: EdgeCache } }).caches;
+  return storage?.default ?? null;
+}
+
 export const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

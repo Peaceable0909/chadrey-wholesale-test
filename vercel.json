@@ -6,6 +6,18 @@
   "outputDirectory": "dist/public",
   "rewrites": [
     {
+      "source": "/api/catalogue/:path*",
+      "destination": "https://chadrey-wholesale.femiolaniyi36.workers.dev/api/catalogue/:path*"
+    },
+    {
+      "source": "/api/admin/:path*",
+      "destination": "https://chadrey-wholesale.femiolaniyi36.workers.dev/api/admin/:path*"
+    },
+    {
+      "source": "/photos/:path*",
+      "destination": "https://chadrey-wholesale.femiolaniyi36.workers.dev/photos/:path*"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }

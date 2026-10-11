@@ -1,6 +1,6 @@
 import { SLUG_PATTERN, slugOrFallback } from "../shared/slug";
 import { productsInQuotes, realDeps, requireAdmin, type AdminDeps } from "./adminAuth";
-import { HttpError, UUID, errorResponse, json } from "./http";
+import { HttpError, UUID, defaultEdgeCache, errorResponse, json, type EdgeCache } from "./http";
 import { MAX_PHOTO_BYTES, removePhotos, storePhoto } from "./photos";
 import { ensureSchema } from "./schema";
 import {
@@ -38,7 +38,14 @@ import type { Env, WorkerContext } from "./types";
  * The reply shapes match what Supabase used to return, so the website's screens did not have to change.
  */
 
-export type ApiDeps = { admin: AdminDeps };
+export type ApiDeps = { admin: AdminDeps; /** Where shopper-facing answers are remembered. Defaults to Cloudflare's own; null turns it off. */ cache?: EdgeCache | null };
+
+/**
+ * What shoppers see is the same for everyone, so one answer is shared for a short while instead of asking the database
+ * again for every visitor. This keeps a busy day (or a scraper) from using up the database's free daily reads, and makes
+ * pages quicker. The price of it: a change an administrator makes reaches shoppers within this many seconds.
+ */
+export const SHOP_CACHE_SECONDS = 30;
 
 export const MAX_PRODUCT_PHOTOS = 30;
 const MAX_JSON_BYTES = 200_000;
@@ -222,7 +229,14 @@ async function createProduct(request: Request, env: Env, userId: string): Promis
     if (!SLUG_PATTERN.test(slug) || slug.length > 90) throw new HttpError(400, "The web address can only use lower-case letters, numbers and dashes.");
   }
 
-  const attempt = (candidate: string) => insertProduct(env.DB, { id, slug: candidate, input, createdBy: userId });
+  let createdAt: string | undefined;
+  if (extra.created_at !== undefined) {
+    const parsed = typeof extra.created_at === "string" ? new Date(extra.created_at) : null;
+    if (!parsed || Number.isNaN(parsed.getTime()) || parsed.getTime() > Date.now() + 86_400_000) throw new HttpError(400, "The date the product was added is not valid.");
+    createdAt = parsed.toISOString();
+  }
+
+  const attempt = (candidate: string) => insertProduct(env.DB, { id, slug: candidate, input, createdBy: userId, createdAt });
   let outcome: "created" | "exists";
   try {
     outcome = await attempt(slug);
@@ -312,12 +326,6 @@ async function adminRoutes(request: Request, env: Env, url: URL, rest: string[],
   const wrongMethod = () => new HttpError(405, "Method not allowed");
 
   if (rest[0] === "me" && rest.length === 1) return json({ userId: admin.userId });
-
-  if (rest[0] === "slug" && rest.length === 1) {
-    const base = q.get("base") ?? "";
-    if (!SLUG_PATTERN.test(base) || base.length > 90) throw new HttpError(400, "That is not a valid web address.");
-    return json({ slug: await freeSlug(env.DB, base) });
-  }
 
   if (rest[0] !== "products") throw new HttpError(404, "Not found");
 
@@ -409,7 +417,26 @@ async function adminRoutes(request: Request, env: Env, url: URL, rest: string[],
   throw new HttpError(404, "Not found");
 }
 
-export async function handleApi(request: Request, env: Env, _ctx: WorkerContext, deps: ApiDeps = { admin: realDeps }): Promise<Response> {
+async function rememberedFor(request: Request, ctx: WorkerContext, cache: EdgeCache | null, answer: () => Promise<Response>): Promise<Response> {
+  if (!cache || request.method !== "GET") return answer();
+  // A plain GET of the same address, so nothing about the visitor can split or poison what is remembered.
+  const key = new Request(new URL(request.url).href);
+  const hit = await cache.match(key);
+  if (hit) {
+    const headers = new Headers(hit.headers);
+    headers.set("cache-control", "no-store");
+    return new Response(hit.body, { status: hit.status, headers });
+  }
+  const fresh = await answer();
+  if (fresh.ok) {
+    const headers = new Headers(fresh.headers);
+    headers.set("cache-control", `public, max-age=${SHOP_CACHE_SECONDS}`);
+    ctx.waitUntil(cache.put(key, new Response(fresh.clone().body, { status: fresh.status, headers })).catch(() => undefined));
+  }
+  return fresh;
+}
+
+export async function handleApi(request: Request, env: Env, ctx: WorkerContext, deps: ApiDeps = { admin: realDeps }): Promise<Response> {
   try {
     const url = new URL(request.url);
     const parts = url.pathname
@@ -424,8 +451,10 @@ export async function handleApi(request: Request, env: Env, _ctx: WorkerContext,
       });
     const rest = parts.slice(2);
     if (parts[1] === "catalogue") {
-      await ensureSchema(env.DB);
-      return await catalogueRoutes(request, env, url, rest);
+      return await rememberedFor(request, ctx, deps.cache === undefined ? defaultEdgeCache() : deps.cache, async () => {
+        await ensureSchema(env.DB);
+        return catalogueRoutes(request, env, url, rest);
+      });
     }
     if (parts[1] === "admin") return await adminRoutes(request, env, url, rest, deps);
     throw new HttpError(404, "Not found");

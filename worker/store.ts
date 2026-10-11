@@ -347,14 +347,14 @@ const inputBinds = (input: ProductInput): unknown[] => [
 ];
 
 /** "exists" means a product with this id is already saved (a retry, or a message Telegram sent twice). */
-export async function insertProduct(db: D1Database, args: { id: string; slug: string; input: ProductInput; createdBy: string | null }): Promise<"created" | "exists"> {
+export async function insertProduct(db: D1Database, args: { id: string; slug: string; input: ProductInput; createdBy: string | null; /** Keeps the original date when copying a product from another store. */ createdAt?: string }): Promise<"created" | "exists"> {
   try {
     await db
       .prepare(
-        `INSERT INTO products (id, slug, name, short_description, description, category, moq, colors, sizes, packaging_options, customization_options, option_groups, price_currency, price_unit, price_tiers, is_active, created_by)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO products (id, slug, name, short_description, description, category, moq, colors, sizes, packaging_options, customization_options, option_groups, price_currency, price_unit, price_tiers, is_active, created_by, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, ${NOW}), COALESCE(?, ${NOW}))`,
       )
-      .bind(args.id, args.slug, ...inputBinds(args.input), args.createdBy)
+      .bind(args.id, args.slug, ...inputBinds(args.input), args.createdBy, args.createdAt ?? null, args.createdAt ?? null)
       .run();
     return "created";
   } catch (error) {

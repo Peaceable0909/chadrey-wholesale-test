@@ -1,6 +1,5 @@
 import * as React from "react";
 import { PackagePlus } from "lucide-react";
-import { useAuth } from "@/_core/hooks/useAuth";
 import { PhotoPicker, type PhotoDraft } from "@/components/admin/PhotoPicker";
 import { ProductFormSections } from "@/components/admin/ProductFormSections";
 import { Button, ButtonLink, Card, FormSection, Notice } from "@/components/ios";
@@ -12,25 +11,23 @@ import { usePageTitle } from "@/hooks/usePageTitle";
 import { useScrollTopWhen } from "@/hooks/useScrollTopWhen";
 import { prepareImage } from "@/lib/imageCompress";
 import { emptyDraft, fieldsFromDraft, MAX_PRODUCT_IMAGES, MIN_PRODUCT_IMAGES, type ProductDraft } from "@/lib/productDraft";
-import { createProductRecord, deleteProductRecord, findFreeSlug, insertImageRows, removeStoredFiles, uploadProductImages } from "@/lib/productWriteApi";
+import { createProductRecord, deleteProductRecord, setProductActive, uploadProductPhoto } from "@/lib/productWriteApi";
 import { productHref } from "@/lib/productRoute";
-import { slugOrFallback } from "@/lib/slug";
+import { ApiError } from "@/lib/shopApi";
 import { errorMessage } from "@/lib/supabaseCompat";
 import { useQueryClient } from "@tanstack/react-query";
 
 type Progress = { stage: string; percent: number };
-type Published = { slug: string; name: string; coverUrl?: string; pricingSaved: boolean; fields: NonNullable<ReturnType<typeof fieldsFromDraft>["fields"]> };
+type Published = { slug: string; name: string; coverUrl?: string; fields: NonNullable<ReturnType<typeof fieldsFromDraft>["fields"]> };
 
 /** Turns a failed write into something an admin can act on. */
 function publishProblem(caught: unknown): string {
-  const code = (caught as { code?: string } | null)?.code;
-  if (code === "23505") return "A product with this web address already exists. Please try publishing again.";
+  if (caught instanceof ApiError && caught.code === "slug_taken") return "A product with this web address already exists. Please try publishing again.";
   return errorMessage(caught, "Unable to publish the product. Check your connection and try again.");
 }
 
 export default function AdminProductCreate() {
   usePageTitle("Add product");
-  const { user } = useAuth();
   const queryClient = useQueryClient();
   const { categories } = useCategoryCounts();
   const [draft, setDraft] = React.useState<ProductDraft>(emptyDraft);
@@ -57,7 +54,6 @@ export default function AdminProductCreate() {
     if (!fields) return setError(problem ?? "Check the product details.");
     if (photos.length < MIN_PRODUCT_IMAGES) return setError(`Add at least ${MIN_PRODUCT_IMAGES} photos before publishing.`);
 
-    let uploadedPaths: string[] = [];
     let createdId: string | null = null;
     try {
       setProgress({ stage: "Preparing photos…", percent: 3 });
@@ -67,34 +63,32 @@ export default function AdminProductCreate() {
         setProgress({ stage: `Preparing photo ${index + 1} of ${photos.length}…`, percent: 3 + Math.round(((index + 1) / photos.length) * 17) });
       }
 
-      const slug = await findFreeSlug(slugOrFallback(fields.name));
-      const uploaded = await uploadProductImages(slug, prepared, 0, (done, total) =>
-        setProgress({ stage: `Uploading photo ${done} of ${total}…`, percent: 20 + Math.round((done / total) * 60) }),
-      );
-      uploadedPaths = uploaded.map(item => item.path);
-
-      setProgress({ stage: "Publishing product…", percent: 85 });
-      const saved = await createProductRecord(fields, slug, user?.uid);
-      createdId = saved.id;
+      // The product starts hidden, so nobody sees it half-finished while its photos upload. It goes live at the end.
+      setProgress({ stage: "Saving product…", percent: 22 });
+      const created = await createProductRecord({ ...fields, isActive: false });
+      createdId = created.id;
 
       const coverIndex = Math.max(0, photos.findIndex(photo => photo.id === coverId));
-      await insertImageRows(
-        saved.id,
-        fields.name,
-        uploaded.map((image, index) => ({ image, label: photos[index].label, isPrimary: index === coverIndex })),
-        0,
-      );
+      let coverUrl: string | undefined;
+      for (let index = 0; index < prepared.length; index += 1) {
+        const uploaded = await uploadProductPhoto(created.id, prepared[index], { label: photos[index].label, primary: index === coverIndex, sort: index });
+        if (index === coverIndex) coverUrl = uploaded.url;
+        setProgress({ stage: `Uploading photo ${index + 1} of ${prepared.length}…`, percent: 22 + Math.round(((index + 1) / prepared.length) * 63) });
+      }
+
+      setProgress({ stage: "Publishing product…", percent: 90 });
+      if (fields.isActive) await setProductActive(created.id, true);
 
       setProgress({ stage: "Done", percent: 100 });
       void queryClient.invalidateQueries({ queryKey: ["catalogue"] });
       void queryClient.invalidateQueries({ queryKey: ["category-counts"] });
       void queryClient.invalidateQueries({ queryKey: ["admin-products"] });
-      setPublished({ slug, name: fields.name, coverUrl: uploaded[coverIndex]?.url, pricingSaved: saved.pricingSaved, fields });
+      void queryClient.invalidateQueries({ queryKey: ["admin-hidden-count"] });
+      setPublished({ slug: created.slug, name: fields.name, coverUrl, fields });
     } catch (caught) {
-      // Leave nothing half-finished behind: no product record without photos, no orphaned files.
+      // Leave nothing half-finished behind: no product record without its photos.
       try {
-        if (createdId) await deleteProductRecord(createdId, uploadedPaths);
-        else await removeStoredFiles(uploadedPaths);
+        if (createdId) await deleteProductRecord(createdId);
       } catch (cleanupError) {
         console.error("Cleanup after failed publish:", cleanupError);
       }
@@ -126,7 +120,7 @@ export default function AdminProductCreate() {
           </span>
           <div className="mx-auto flex max-w-xs items-center gap-3 rounded-group bg-canvas p-3 text-left">
             <span className="size-14 shrink-0 overflow-hidden rounded-[12px] bg-fill-4">
-              <ProductImage product={{ name: published.name, category: published.fields.category, images: published.coverUrl ? [{ id: "cover", url: published.coverUrl, storagePath: null, label: null, alt: null, isPrimary: true, sortOrder: 0 }] : [] }} />
+              <ProductImage variant="thumb" product={{ name: published.name, category: published.fields.category, images: published.coverUrl ? [{ id: "cover", url: published.coverUrl, storagePath: null, label: null, alt: null, isPrimary: true, sortOrder: 0 }] : [] }} />
             </span>
             <div className="min-w-0">
               <p className="truncate text-headline font-semibold">{published.name}</p>
@@ -134,11 +128,6 @@ export default function AdminProductCreate() {
             </div>
           </div>
           <p className="mt-4 text-body text-label-2">It is live in the store now.</p>
-          {!published.pricingSaved && (
-            <Notice tone="orange" className="mt-4 text-left">
-              The product was saved, but its prices were not, because the database does not have the price columns yet. Run <code className="font-mono text-footnote">supabase_product_pricing.sql</code> in Supabase, then add the prices from the product editor.
-            </Notice>
-          )}
           <div className="mt-6 flex flex-col gap-3">
             <Button size="lg" full onClick={addAnother}>
               <PackagePlus className="size-5" aria-hidden /> Add another product

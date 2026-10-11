@@ -310,6 +310,15 @@ describe("adding and editing products", () => {
     expect((await call("/api/catalogue/products")).data.total).toBe(1);
   });
 
+  it("keeps the original date when a product is copied from another store", async () => {
+    const id = "761cbd43-660f-4827-af5f-90ff2c6492d7";
+    await admin("/products", { method: "POST", body: { ...product(), id, slug: "old-one", created_at: "2026-08-27 21:51:31.742586+00" } });
+    expect((await admin(`/products/${id}`)).data).toMatchObject({ created_at: "2026-08-27T21:51:31.742Z", updated_at: "2026-08-27T21:51:31.742Z" });
+    const future = await admin("/products", { method: "POST", body: { ...product(), created_at: "2999-01-01T00:00:00Z" } });
+    expect(future.status).toBe(400);
+    expect((await admin("/products", { method: "POST", body: { ...product(), created_at: "yesterday-ish" } })).status).toBe(400);
+  });
+
   it("refuses a chosen web address that is taken, or not valid", async () => {
     await seed({ slug: "taken" });
     const taken = await admin("/products", { method: "POST", body: { ...product(), slug: "taken" } });
@@ -354,12 +363,6 @@ describe("adding and editing products", () => {
     const a = await seed({ name: "A", slug: "a" });
     const b = await seed({ name: "B", slug: "b", is_active: false });
     expect((await admin(`/products/by-ids?ids=${a},${b}`)).data.items.map((item: any) => item.name).sort()).toEqual(["A", "B"]);
-  });
-
-  it("suggests a free web address", async () => {
-    await seed({ slug: "mug" });
-    expect((await admin("/slug?base=mug")).data).toEqual({ slug: "mug-2" });
-    expect((await admin("/slug?base=Bad%20Base")).status).toBe(400);
   });
 });
 
@@ -529,6 +532,110 @@ describe("changing many products at once", () => {
     await test.env.DB.batch(statements);
     expect((await admin("/products/bulk", { method: "POST", body: { action: "show", ids } })).data).toEqual({ updated: 250 });
     expect((await admin("/products/bulk", { method: "POST", body: { action: "delete", ids } })).data).toEqual({ deleted: 250, blocked: 0 });
+  });
+});
+
+describe("sharing answers between visitors", () => {
+  function fakeCache() {
+    const store = new Map<string, Response>();
+    return {
+      store,
+      puts: [] as Array<{ url: string; cacheControl: string | null }>,
+      async match(request: Request) {
+        return store.get(request.url)?.clone();
+      },
+      async put(request: Request, response: Response) {
+        store.set(request.url, response.clone());
+        this.puts.push({ url: request.url, cacheControl: response.headers.get("cache-control") });
+      },
+    };
+  }
+
+  /** Counts how often the database is asked, so "served from memory" can be proven. */
+  function countingDb() {
+    const counter = { queries: 0 };
+    const db = {
+      prepare: (sql: string) => {
+        counter.queries += 1;
+        return test.env.DB.prepare(sql);
+      },
+      batch: (statements: any[]) => test.env.DB.batch(statements),
+    } as typeof test.env.DB;
+    return { db, counter };
+  }
+
+  async function visit(path: string, cache: ReturnType<typeof fakeCache> | null, db = test.env.DB, headers: Record<string, string> = {}) {
+    const pending: Promise<unknown>[] = [];
+    const response = await handleApi(new Request(`https://shop.test${path}`, { headers }), { ...test.env, DB: db }, { waitUntil: promise => void pending.push(promise) }, { admin: supabase.deps, cache });
+    await Promise.all(pending);
+    return { status: response.status, body: await response.text(), cacheControl: response.headers.get("cache-control") };
+  }
+
+  it("answers the same shopper request from memory instead of asking the database again", async () => {
+    await seed({ name: "Shared", slug: "shared" });
+    const cache = fakeCache();
+    const { db, counter } = countingDb();
+    const first = await visit("/api/catalogue/products?page=0", cache, db);
+    const afterFirst = counter.queries;
+    expect(afterFirst).toBeGreaterThan(0);
+    const second = await visit("/api/catalogue/products?page=0", cache, db);
+    expect(counter.queries).toBe(afterFirst);
+    expect(second).toEqual(first);
+    expect(JSON.parse(second.body).items[0].name).toBe("Shared");
+  });
+
+  it("remembers it for 30 seconds on Cloudflare's side but tells browsers to always ask", async () => {
+    await seed();
+    const cache = fakeCache();
+    const first = await visit("/api/catalogue/categories", cache);
+    expect(first.cacheControl).toBe("no-store");
+    expect(cache.puts).toEqual([{ url: "https://shop.test/api/catalogue/categories", cacheControl: "public, max-age=30" }]);
+    expect((await visit("/api/catalogue/categories", cache)).cacheControl).toBe("no-store");
+  });
+
+  it("keeps different questions apart", async () => {
+    await seed({ name: "Alpha", slug: "alpha", category: "Bags" });
+    await seed({ name: "Beta", slug: "beta", category: "Toys" });
+    const cache = fakeCache();
+    const bags = JSON.parse((await visit("/api/catalogue/products?category=Bags", cache)).body);
+    const toys = JSON.parse((await visit("/api/catalogue/products?category=Toys", cache)).body);
+    expect(bags.items.map((item: any) => item.name)).toEqual(["Alpha"]);
+    expect(toys.items.map((item: any) => item.name)).toEqual(["Beta"]);
+  });
+
+  it("gives every visitor the same answer whatever headers they send", async () => {
+    await seed({ name: "Same", slug: "same" });
+    const cache = fakeCache();
+    const { db, counter } = countingDb();
+    await visit("/api/catalogue/products", cache, db);
+    const afterFirst = counter.queries;
+    const withSignIn = await visit("/api/catalogue/products", cache, db, { authorization: `Bearer ${adminToken}`, cookie: "a=b", "accept-language": "th" });
+    expect(counter.queries).toBe(afterFirst);
+    expect(JSON.parse(withSignIn.body).total).toBe(1);
+  });
+
+  it("never remembers a failure", async () => {
+    const cache = fakeCache();
+    expect((await visit("/api/catalogue/products/not-yet", cache)).status).toBe(404);
+    expect(cache.puts).toHaveLength(0);
+    await seed({ name: "Now here", slug: "not-yet" });
+    expect((await visit("/api/catalogue/products/not-yet", cache)).status).toBe(200);
+  });
+
+  it("never remembers anything an administrator sees, or any change", async () => {
+    const cache = fakeCache();
+    await admin("/products");
+    const response = await handleApi(new Request("https://shop.test/api/admin/products", { headers: { authorization: `Bearer ${adminToken}` } }), test.env, ctx, { admin: supabase.deps, cache });
+    expect(response.status).toBe(200);
+    expect(cache.puts).toHaveLength(0);
+    const post = await handleApi(new Request("https://shop.test/api/catalogue/products", { method: "POST" }), test.env, ctx, { admin: supabase.deps, cache });
+    expect(post.status).toBe(405);
+    expect(cache.puts).toHaveLength(0);
+  });
+
+  it("still works when there is no memory to use", async () => {
+    await seed({ name: "Plain", slug: "plain" });
+    expect(JSON.parse((await visit("/api/catalogue/products", null)).body).total).toBe(1);
   });
 });
 

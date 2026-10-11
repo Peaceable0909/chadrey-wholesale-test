@@ -7,6 +7,7 @@ import { PageLoading, SignInRequired } from "@/components/layout/PageState";
 import { SiteLayout } from "@/components/layout/SiteLayout";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import { fetchNotifications } from "@/lib/accountApi";
+import { fetchProductNames } from "@/lib/catalogueApi";
 import { formatDate, formatRelative } from "@/lib/format";
 import { getSupabaseClient } from "@/lib/supabase";
 import { statusTone } from "@/lib/status";
@@ -17,14 +18,17 @@ async function fetchMyQuotes(userId: string): Promise<LiveQuote[]> {
   const client = getSupabaseClient();
   const [requestResult, itemResult, fileResult] = await Promise.all([
     client.from("quote_requests").select("id,ref,status,created_at,requirements").eq("customer_id", userId).order("created_at", { ascending: false }),
-    client.from("quote_request_items").select("quote_request_id,products(name)"),
+    client.from("quote_request_items").select("quote_request_id,product_id"),
     client.from("quote_request_files").select("quote_request_id"),
   ]);
   if (requestResult.error) throw requestResult.error;
+  // Product names come from the shop's own database. A product that is hidden or gone just shows the generic title.
+  const items = (itemResult.data || []) as Array<{ quote_request_id: string; product_id: string }>;
+  const productNames = await fetchProductNames(items.map(item => item.product_id)).catch(() => new Map<string, string>());
   const names = new Map<string, string>();
-  for (const item of (itemResult.data || []) as any[]) {
-    const product = Array.isArray(item.products) ? item.products[0] : item.products;
-    if (product?.name && !names.has(item.quote_request_id)) names.set(item.quote_request_id, product.name);
+  for (const item of items) {
+    const name = productNames.get(item.product_id);
+    if (name && !names.has(item.quote_request_id)) names.set(item.quote_request_id, name);
   }
   const files = new Map<string, number>();
   for (const file of (fileResult.data || []) as Array<{ quote_request_id: string }>) files.set(file.quote_request_id, (files.get(file.quote_request_id) || 0) + 1);
