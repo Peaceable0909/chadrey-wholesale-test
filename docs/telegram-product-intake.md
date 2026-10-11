@@ -21,9 +21,10 @@ Category: Uncategorised (set it in admin)
 Review it: https://…/admin/products?status=hidden
 ```
 
-## One-time setup (about 15 minutes)
+## One-time setup (about 10 minutes)
 
-You need Telegram on your phone, and to be signed in to Cloudflare and Supabase.
+You need Telegram on your phone and to be signed in to Cloudflare. The shop's products and photos already live in
+Cloudflare (see [cloudflare-store.md](cloudflare-store.md)), so the bot needs no other service and no database key.
 
 ### 1. Create the bot (2 minutes)
 
@@ -31,7 +32,7 @@ You need Telegram on your phone, and to be signed in to Cloudflare and Supabase.
 2. Send `/newbot`. Give it a name (for example "Chadrey Products") and a username that ends in `bot`.
 3. BotFather replies with a long **token**. Keep it private. Anyone with the token controls your bot.
 
-### 2. Add the secrets in Cloudflare (5 minutes)
+### 2. Add the secrets in Cloudflare (4 minutes)
 
 Cloudflare dashboard → **Workers & Pages** → **chadrey-wholesale** → **Settings** → **Variables and Secrets** → **Add**.
 Choose the type **Secret** (not "Text") for each of these, then press **Deploy**:
@@ -40,11 +41,9 @@ Choose the type **Secret** (not "Text") for each of these, then press **Deploy**
 | --- | --- |
 | `TELEGRAM_BOT_TOKEN` | The token from BotFather. |
 | `TELEGRAM_WEBHOOK_SECRET` | Any long password you make up: at least 30 letters and numbers. Use only letters, numbers, `-` and `_` (Telegram accepts nothing else). |
-| `SUPABASE_SERVICE_KEY` | Supabase → **Project Settings** → **API Keys** → the **secret** key (older projects: the `service_role` key under "Legacy API Keys"). |
 | `TELEGRAM_ALLOWED_USER_IDS` | Leave this for step 4. |
 
-> **Be careful with the Supabase key.** It can read and change everything in your database. Paste it only into
-> Cloudflare's secret box. Never put it in a chat, an email, GitHub or the website's code.
+> Paste the token only into Cloudflare's secret box. Never put it in a chat, an email, GitHub or the website's code.
 
 ### 3. Connect Telegram to your site (2 minutes)
 
@@ -115,10 +114,10 @@ Each row shows warnings: *No category*, *No price*, *No photo*.
 * Only the people in `TELEGRAM_ALLOWED_USER_IDS` can add products. Anyone else only learns their own Telegram ID.
 * Drafts are always hidden. Prices on the site stay indicative, as before.
 * Telegram shrinks photos sent as normal photos (usually to a few hundred KB), which keeps the shop fast.
-  A photo sent "as a file" keeps its full size and must be under 10 MB.
+  A photo sent "as a file" keeps its full size and must be under 10 MB and a real picture (JPEG, PNG, WebP or GIF).
 * If Telegram delivers the same message twice, only one product is made.
-* If `supabase_product_pricing.sql` has not been run yet, the bot still saves the draft, puts the price in the
-  description and tells you.
+* Photos are shown at a size that fits the screen, made on demand by Cloudflare, so a full-size photo is never sent
+  to a phone that shows it as a small card.
 
 ## If something does not work
 
@@ -126,9 +125,9 @@ Each row shows warnings: *No category*, *No price*, *No photo*.
 | --- | --- |
 | No answer from the bot at all | Open the check address. If it shows missing settings, add them. Then open `https://api.telegram.org/botYOUR_BOT_TOKEN/getWebhookInfo`: `last_error_message` says what Telegram could not reach. |
 | "Your Telegram ID is …" | You are not in `TELEGRAM_ALLOWED_USER_IDS` yet. Add the number and deploy. |
-| "Supabase refused the key" | `SUPABASE_SERVICE_KEY` is wrong or from another project. Paste the secret key again. |
-| "storage bucket was not found" | The `product-images` bucket is missing in Supabase. |
-| The draft is there but has no photo | Reply to the bot's confirmation with the photo. |
+| The check address lists `DB` or `PHOTOS` as missing | The Worker is not connected to the shop's database or photo storage. This only happens on a branch preview. On the real address it means a deploy went wrong: see [cloudflare-store.md](cloudflare-store.md). |
+| "used up today's free allowance" | The shop's free database allowance for the day is spent. It starts again at midnight UTC. The $5/month Workers plan removes the limit. |
+| The draft is there but has no photo | Reply to the bot's confirmation with the photo. If it keeps failing, the file may not be a real picture. |
 | Anything else | Cloudflare → Workers & Pages → chadrey-wholesale → **Logs** shows what happened. |
 
 To stop the bot, open `https://api.telegram.org/botYOUR_BOT_TOKEN/deleteWebhook`, or empty `TELEGRAM_ALLOWED_USER_IDS`.
@@ -136,21 +135,23 @@ If the token leaks, send `/revoke` to BotFather, then update `TELEGRAM_BOT_TOKEN
 
 ## For developers
 
-* `worker/` is the Cloudflare Worker (`worker/index.ts`). `run_worker_first: ["/api/telegram"]` in `wrangler.jsonc` wakes
-  it only for that one address; every other address (including `/api/trpc`, used by older pages) is served from the
-  built site exactly as before.
+* `worker/` is the Cloudflare Worker (`worker/index.ts`). `run_worker_first` in `wrangler.jsonc` wakes it only for the
+  bot (`/api/telegram`), the shop's data (`/api/catalogue/*`, `/api/admin/*`) and photos (`/photos/*`); every other
+  address (including `/api/trpc`, used by older pages) is served from the built site exactly as before.
 * `shared/productMessage.ts` reads the caption (tests in `shared/productMessage.test.ts`). It is plain TypeScript, so an
   import tool or an admin paste box can reuse it.
-* The Worker writes with the Supabase **secret key**, which bypasses row-level security. That is why it only ever
+* The bot saves through the same `worker/store.ts` and `worker/photos.ts` as the admin screens, using the Worker's own
+  D1 and R2 bindings. No external service and no key are involved, so there is nothing for it to leak. It only ever
   inserts hidden products and photos, never reads customer data, checks the webhook secret and the allow-list first, and
-  keeps the key out of every reply and log line.
-* A message maps to a fixed product id (hash of chat and message id), so redelivery and album photos find the right
-  product without any extra table.
-* Branch previews do not inherit production settings or secrets (Cloudflare's design). The website works the same on a
-  preview, but `/api/telegram` reports "not set up" there, so a preview can never write to the real shop. The bot only
-  works on the production address.
+  keeps the bot token out of every reply and log line.
+* A message maps to a fixed product id (hash of chat and message id), and a Telegram photo to a fixed photo id, so
+  redelivery and album photos find the right product without any extra table.
+* Branch previews do not inherit production settings or secrets (Cloudflare's design). A preview has its own empty test
+  database and photo storage, and `/api/telegram` reports "not set up" there, so a preview can never write to the real
+  shop. The bot only works on the production address.
 * Secrets are kept across deploys by Cloudflare. `keep_vars` stops a deploy from wiping variables added by hand.
   Do not add `secrets.required` to `wrangler.jsonc`: it would fail every deploy until the secrets exist.
-* Local run: create `.dev.vars` (git-ignored) with the secrets and run `pnpm exec wrangler dev`.
-  `TELEGRAM_API_BASE` and `SUPABASE_URL` can point at pretend servers; `worker/testkit.ts` is the pretend Telegram and
-  Supabase used by the tests.
+* Local run: `pnpm build && pnpm exec wrangler dev` serves the site and the Worker on http://localhost:8787 with a
+  local, empty copy of the database and photo storage. Put the bot secrets in `.dev.vars` (git-ignored) and point
+  `TELEGRAM_API_BASE` at a pretend Telegram if you want to try it without the real one.
+  `worker/testkit.ts` is the pretend Telegram used by the tests; the tests use a real local D1 and R2 (`worker/testEnv.ts`).

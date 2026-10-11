@@ -286,14 +286,22 @@
 - [x] Add a shared auth context so pages no longer repeat profile requests, and guard `?next=` sign-in redirects
 - [x] Remove the unused template components (shadcn `ui/*`, showcase page, dashboard layout, chat box, map) that the new design replaced
 - [x] Add `wrangler.jsonc` so the Cloudflare Workers build (`chadrey-wholesale`) builds the site and serves it as a single-page app from `dist/public`
-- [ ] Apply `supabase_product_pricing.sql` to the live Supabase project, then add prices to the existing products
+- [x] Apply `supabase_product_pricing.sql`: no longer needed. The new Cloudflare database has the price columns from the start (it was never run on the old Supabase project)
+- [ ] Add prices to the existing product(s) in Admin > Products
 - [ ] Move the quotation review, messages, invoice payment, order tracking and fulfilment pages from the old numeric-id tRPC backend to Supabase so they work with Supabase quote requests
 - [x] Leave the Manus runtime plugin out of production builds (it added about 367 KB to every page); it still runs in local development
 
 - [x] Fix slow loading after the redesign: no web-font stylesheet blocking the page, the page HTML down from 369 KB to 2 KB, product photos requested only when they are about to be seen, the home page asks for 8 products instead of 24, and each page's code loads when it is opened
-- [ ] Shrink the photos already uploaded (phone originals are several MB each): either turn on Supabase image transformations (Pro plan) or add an admin tool that resizes existing photos
+- [x] Shrink the photos already uploaded: photos are now shown at a size that fits the screen, made on demand by Cloudflare Images (free for the first 5,000 copies a month), and the old photos were small already (about 140 KB each)
 
 - [x] Add products from Telegram: send a photo with the details as its caption (name, wholesale, resell) to a private bot and a hidden draft is created; the resell range is only echoed back in the chat and never saved (`worker/`, `shared/productMessage.ts`, `docs/telegram-product-intake.md`)
 - [x] Add an approval screen to Admin > Products: a "waiting for your OK" banner, select many, Show in store, Hide, Category and Delete in bulk, with warnings for no category, price or photo
-- [ ] Set up the bot: create it in @BotFather, add the four secrets in Cloudflare, set the webhook and add your Telegram ID (step by step in `docs/telegram-product-intake.md`)
+- [ ] Set up the bot: create it in @BotFather, add the three secrets in Cloudflare (no Supabase key any more), set the webhook and add your Telegram ID (step by step in `docs/telegram-product-intake.md`)
 - [ ] Later: update the price of an existing product from a Telegram message, and quantity breaks in one message ("10+ pcs 45,000")
+
+Move the shop from Supabase to Cloudflare (staged; see `docs/cloudflare-store.md`)
+- [x] Stage 1: products, prices and photos in Cloudflare D1 + R2 (region Asia-Pacific), photos resized on demand, the Telegram bot writes straight into it, catalogue answers shared for 30 seconds, branch previews get their own test database and bucket; sign-in stays on Supabase
+- [x] One-tap "Copy now" in Admin > Products brings the old Supabase product across with its photos, id, web address and date
+- [ ] Switch on Stage 1: run the one line in `docs/cloudflare-store.md` in Supabase (lets quote requests refer to products that are only in Cloudflare), then press "Copy now"
+- [ ] Stage 2: customers' accounts and sign-in (an emailed sign-in link; Cloudflare Email Sending is in beta and needs the $5 Workers plan, or use a login service), quote requests, quotations, invoices, orders, messages and notifications on Cloudflare. The older quotation, invoice, order, message and fulfilment pages still call a retired numeric-id backend, so rebuild them directly on Cloudflare instead of on Supabase first
+- [ ] Stage 3: switch Supabase off. Remove `client/src/lib/legacyCopy.ts`, `LegacyCopyCard`, the `SUPABASE_*` settings, `supabase_*.sql`, and the Supabase checks in `worker/adminAuth.ts` (admins sign in through the new login instead)
