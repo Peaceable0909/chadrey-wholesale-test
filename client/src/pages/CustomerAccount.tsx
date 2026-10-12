@@ -3,6 +3,7 @@ import { HelpCircle, LayoutDashboard, LogOut, MapPin, Package } from "lucide-rea
 import { useLocation } from "wouter";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { Badge, Card, EmptyState, ListGroup, ListRow, Notice, PageHeader } from "@/components/ios";
+import { AppearanceSetting } from "@/components/layout/AppearanceSetting";
 import { Avatar } from "@/components/layout/Avatar";
 import { Container } from "@/components/layout/Container";
 import { PageLoading, SignInRequired } from "@/components/layout/PageState";
@@ -30,7 +31,17 @@ export default function CustomerAccount() {
   const addresses = useQuery({ queryKey: ["my-addresses", user?.uid], queryFn: () => fetchAddresses(user!.uid), enabled: Boolean(user), staleTime: 60_000 });
 
   if (loading) return <SiteLayout><PageLoading label="Loading your account…" /></SiteLayout>;
-  if (!user) return <SiteLayout><SignInRequired title="Sign in to manage your account" description="Your profile and saved delivery addresses are only available to you." /></SiteLayout>;
+  if (!user) {
+    // The look of the site is a setting of this device, so it can be changed without signing in.
+    return (
+      <SiteLayout>
+        <SignInRequired title="Sign in to manage your account" description="Your profile and saved delivery addresses are only available to you." />
+        <Container size="form" className="-mt-6 md:-mt-12">
+          <AppearanceSetting />
+        </Container>
+      </SiteLayout>
+    );
+  }
 
   return (
     <SiteLayout>
@@ -93,6 +104,8 @@ export default function CustomerAccount() {
           <ListRow href="/contact" icon={<HelpCircle />} tone="orange" title="Contact us" chevron />
           {user.role === "admin" && <ListRow href="/admin" icon={<LayoutDashboard />} tone="indigo" title="Open admin" chevron />}
         </ListGroup>
+
+        <AppearanceSetting />
 
         <ListGroup>
           <ListRow

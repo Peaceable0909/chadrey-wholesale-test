@@ -5,10 +5,26 @@
     <!-- viewport-fit=cover lets the layout use the full iPhone screen; safe-area insets are handled in CSS.
          Pinch-zoom stays enabled for accessibility (inputs are 16px+, so iOS does not auto-zoom). -->
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <meta name="color-scheme" content="light dark" />
-    <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
-    <meta name="theme-color" content="#07172e" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#ffffff" />
     <meta name="format-detection" content="telephone=no" />
+
+    <!-- Picks the white or dark look before the first paint, so the page never flashes the wrong one.
+         White unless the visitor chose Dark or Auto in Settings (the choice is saved in this browser).
+         Same rules as client/src/lib/theme.ts; theme.test.ts runs this exact script against them. -->
+    <script id="theme-init">
+      (function () {
+        var theme = "light";
+        try {
+          var saved = localStorage.getItem("chadrey-theme");
+          if (saved === "dark" || (saved === "system" && matchMedia("(prefers-color-scheme: dark)").matches)) theme = "dark";
+        } catch (e) {}
+        var root = document.documentElement;
+        root.setAttribute("data-theme", theme);
+        root.style.colorScheme = theme;
+        var bar = document.querySelector('meta[name="theme-color"]');
+        if (bar) bar.setAttribute("content", theme === "dark" ? "#07172e" : "#ffffff");
+      })();
+    </script>
 
     <!-- "Add to Home Screen" on iPhone opens the site like an app -->
     <meta name="mobile-web-app-capable" content="yes" />

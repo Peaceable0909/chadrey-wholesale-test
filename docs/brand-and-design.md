@@ -23,11 +23,13 @@ same pairing the logo uses. Orange used as small text on white has the same prob
 `#AD4100` (5.9 : 1). Orange is never used on its own to show a state.
 
 Other contrast figures: navy on white 17.0 : 1, muted slate on white 5.9 : 1, muted slate on soft grey 5.5 : 1.
-Dark mode (the phone's dark setting) uses navy surfaces `#07172E` / `#0C2142`, off-white text and the same orange.
+The site is white by default. Dark mode is a choice in Settings (Account, then Appearance: White, Dark or Auto), saved in that
+browser; a phone that is in dark mode does not turn the shop dark by itself unless Auto is chosen. Dark uses navy surfaces
+`#07172E` / `#0C2142`, off-white text and the same orange.
 
 ## Where to change it
 
-* `client/src/index.css`, section 1 ("Tokens"): every colour, for light and dark mode. Change a colour there and the whole
+* `client/src/index.css`, section 1 ("Tokens"): every colour, for the white look (`:root`) and the dark look (`:root[data-theme="dark"]`). Change a colour there and the whole
   site follows. Section 2 gives the colours their names (`bg-tint`, `text-label`, `text-on-tint` ...).
 * `client/src/components/ios/` holds the shared pieces (buttons, chips, search box, sheets). `Button` has the orange
   `filled` look (the default), `navy`, `outline`, `gray`, `plain`, and `light`/`glass` for use on navy.

@@ -130,7 +130,7 @@ function Router() {
 export default function App() {
   return (
     <ErrorBoundary>
-      <ThemeProvider defaultTheme="light">
+      <ThemeProvider>
         <AuthProvider>
           <TooltipProvider>
             <Toaster position="top-center" />

@@ -4,6 +4,9 @@
 @source "../index.html";
 @source "./**/*.{ts,tsx}";
 
+/* Tailwind's dark: variant follows the chosen look (data-theme on <html>), not the device's own light/dark setting. */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
 /* ==========================================================================
    Chadrey design system — orange and deep navy, with iOS-style structure
    --------------------------------------------------------------------------
@@ -113,66 +116,66 @@
   }
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    color-scheme: dark;
+/* The dark look. Nothing switches it on by itself: the page script (client/index.html) and ThemeProvider set data-theme="dark" on <html>
+   only when a visitor chose Dark, or Auto on a device that is in dark mode. Everyone else sees the white look above. */
+:root[data-theme="dark"] {
+  color-scheme: dark;
 
-    --brand-orange-deep: #ff9455;
-    --brand-orange-wash: rgba(255, 112, 20, 0.2);
+  --brand-orange-deep: #ff9455;
+  --brand-orange-wash: rgba(255, 112, 20, 0.2);
 
-    --canvas: #07172e;
-    --surface: #0c2142;
-    --surface-raised: #112a52;
-    --fill-1: rgba(244, 246, 249, 0.3);
-    --fill-2: rgba(244, 246, 249, 0.2);
-    --fill-3: rgba(244, 246, 249, 0.12);
-    --fill-4: rgba(244, 246, 249, 0.08);
+  --canvas: #07172e;
+  --surface: #0c2142;
+  --surface-raised: #112a52;
+  --fill-1: rgba(244, 246, 249, 0.3);
+  --fill-2: rgba(244, 246, 249, 0.2);
+  --fill-3: rgba(244, 246, 249, 0.12);
+  --fill-4: rgba(244, 246, 249, 0.08);
 
-    --label: #f4f6f9;
-    --label-2: #a9b4c6;
-    --label-3: #8e9ab0;
+  --label: #f4f6f9;
+  --label-2: #a9b4c6;
+  --label-3: #8e9ab0;
 
-    --separator: rgba(244, 246, 249, 0.14);
-    --separator-strong: rgba(244, 246, 249, 0.3);
-    --control-border: #8e9ab0;
-    --focus-ring: #ff9455;
+  --separator: rgba(244, 246, 249, 0.14);
+  --separator-strong: rgba(244, 246, 249, 0.3);
+  --control-border: #8e9ab0;
+  --focus-ring: #ff9455;
 
-    --tint: #ff7014;
-    --tint-pressed: #ff8a3d;
-    --tint-text: #ff9455;
-    --tint-soft: rgba(255, 112, 20, 0.2);
-    --on-tint: #071c3b;
+  --tint: #ff7014;
+  --tint-pressed: #ff8a3d;
+  --tint-text: #ff9455;
+  --tint-soft: rgba(255, 112, 20, 0.2);
+  --on-tint: #071c3b;
 
-    --blue: #9db4d8;
-    --blue-text: #b6c8e4;
-    --green: #3ec06d;
-    --green-text: #5fd48a;
-    --orange: #ff7014;
-    --orange-text: #ff9455;
-    --red: #ff5a50;
-    --red-text: #ff7d75;
-    --red-solid: #d70015;
-    --indigo: #8aa3d6;
-    --indigo-text: #a5b9e3;
-    --teal: #7fb0e0;
-    --teal-text: #9cc4ec;
-    --pink: #ff8a6f;
-    --pink-text: #ffa68f;
-    --purple: #a6b3d0;
-    --purple-text: #bcc6dd;
-    --yellow: #ffc83d;
-    --yellow-text: #ffd66b;
-    --gray: #8e9ab0;
-    --gray-text: #a9b4c6;
+  --blue: #9db4d8;
+  --blue-text: #b6c8e4;
+  --green: #3ec06d;
+  --green-text: #5fd48a;
+  --orange: #ff7014;
+  --orange-text: #ff9455;
+  --red: #ff5a50;
+  --red-text: #ff7d75;
+  --red-solid: #d70015;
+  --indigo: #8aa3d6;
+  --indigo-text: #a5b9e3;
+  --teal: #7fb0e0;
+  --teal-text: #9cc4ec;
+  --pink: #ff8a6f;
+  --pink-text: #ffa68f;
+  --purple: #a6b3d0;
+  --purple-text: #bcc6dd;
+  --yellow: #ffc83d;
+  --yellow-text: #ffd66b;
+  --gray: #8e9ab0;
+  --gray-text: #a9b4c6;
 
-    --material: rgba(12, 33, 66, 0.9);
-    --material-border: rgba(244, 246, 249, 0.14);
-    --overlay: rgba(2, 8, 18, 0.65);
+  --material: rgba(12, 33, 66, 0.9);
+  --material-border: rgba(244, 246, 249, 0.14);
+  --overlay: rgba(2, 8, 18, 0.65);
 
-    --elev-card: 0 0 0 0.5px rgba(244, 246, 249, 0.08);
-    --elev-float: 0 10px 34px rgba(0, 0, 0, 0.6);
-    --elev-sheet: 0 -10px 50px rgba(0, 0, 0, 0.6);
-  }
+  --elev-card: 0 0 0 0.5px rgba(244, 246, 249, 0.08);
+  --elev-float: 0 10px 34px rgba(0, 0, 0, 0.6);
+  --elev-sheet: 0 -10px 50px rgba(0, 0, 0, 0.6);
 }
 
 /* 2. Tailwind theme -------------------------------------------------------- */
