@@ -383,6 +383,33 @@ export async function updateProduct(db: D1Database, id: string, input: ProductIn
   return Number(result.meta.changes ?? 0) > 0;
 }
 
+/**
+ * Fills in the text of a draft the bot saved moments ago, but ONLY while nobody has touched it since: it must still be hidden,
+ * still have the text the bot saved, and its updated_at must still equal its created_at. Every change made in Admin (the text,
+ * but also the price, the minimum order, the colours or the sizes) sets updated_at, so that one check protects all of them, not
+ * only the columns compared here. (SQLite gives 'now' the same value everywhere in one statement, which is why a draft the bot
+ * saved has the two dates equal.) The write is all or nothing.
+ * false means the draft was not updated: it was changed, shown in the store, or deleted.
+ */
+export async function applyDraftText(
+  db: D1Database,
+  id: string,
+  args: {
+    expected: { name: string; short_description: string; description: string; category: string };
+    set: { short_description: string; description: string; category: string; colors: string[] | null };
+  },
+): Promise<boolean> {
+  const { expected, set } = args;
+  const result = await db
+    .prepare(
+      `UPDATE products SET short_description = ?, description = ?, category = ?, colors = COALESCE(?, colors), updated_at = ${NOW}
+       WHERE id = ? AND is_active = 0 AND updated_at = created_at AND name = ? AND short_description = ? AND description = ? AND category = ?`,
+    )
+    .bind(set.short_description, set.description, set.category, set.colors ? JSON.stringify(set.colors) : null, id, expected.name, expected.short_description, expected.description, expected.category)
+    .run();
+  return Number(result.meta.changes ?? 0) > 0;
+}
+
 const changes = (results: Array<{ meta: { changes?: number } }>) => results.reduce((sum, result) => sum + Number(result.meta.changes ?? 0), 0);
 
 export async function setActive(db: D1Database, ids: string[], active: boolean): Promise<number> {

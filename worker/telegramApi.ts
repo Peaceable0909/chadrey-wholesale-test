@@ -24,13 +24,20 @@ export function createTelegram(token: string, base: string, doFetch: typeof fetc
   }
 
   return {
-    sendMessage(chatId: number, text: string, replyTo?: number) {
-      return call("sendMessage", {
+    /** Returns the id of the message that was sent, so the bot can change it later (see editMessage). */
+    async sendMessage(chatId: number, text: string, replyTo?: number): Promise<number | null> {
+      const sent = await call<{ message_id?: number } | null>("sendMessage", {
         chat_id: chatId,
         text,
         link_preview_options: { is_disabled: true },
         ...(replyTo ? { reply_parameters: { message_id: replyTo, allow_sending_without_reply: true } } : {}),
       });
+      return typeof sent?.message_id === "number" ? sent.message_id : null;
+    },
+
+    /** Replaces the text of a message the bot sent earlier. */
+    async editMessage(chatId: number, messageId: number, text: string): Promise<void> {
+      await call("editMessageText", { chat_id: chatId, message_id: messageId, text, link_preview_options: { is_disabled: true } });
     },
 
     /** Downloads a photo or file by its Telegram id. Refuses anything larger than maxBytes. */

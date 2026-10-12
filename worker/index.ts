@@ -1,5 +1,5 @@
 import { handleApi } from "./api";
-import { allowedUserIds, missingConfig, safeEqual } from "./config";
+import { aiSettings, allowedUserIds, missingConfig, safeEqual } from "./config";
 import { errorResponse, json } from "./http";
 import { handleUpdate, type IntakeDeps } from "./intake";
 import { handlePhotoRequest } from "./photos";
@@ -17,7 +17,7 @@ const MAX_BODY_BYTES = 1_000_000;
 
 /**
  * Telegram calls this address for every message sent to the bot.
- *  - GET shows whether the setup is complete (names of missing settings only, never values).
+ *  - GET shows whether the setup is complete (names of missing settings only, never values) and whether AI drafting is switched on.
  *  - POST must carry the secret Telegram was told to send, otherwise nothing happens.
  * The reply goes back to Telegram at once; saving the product continues in the background.
  */
@@ -25,7 +25,8 @@ export async function handleTelegramRequest(request: Request, env: Env, ctx: Wor
   const missing = missingConfig(env);
 
   if (request.method === "GET") {
-    return json({ ready: missing.length === 0 && allowedUserIds(env).size > 0, missing, allowedUsers: allowedUserIds(env).size });
+    const ai = aiSettings(env);
+    return json({ ready: missing.length === 0 && allowedUserIds(env).size > 0, missing, allowedUsers: allowedUserIds(env).size, ai: ai.enabled, aiService: ai.provider });
   }
   if (request.method !== "POST") return json({ error: "Method not allowed" }, 405, { allow: "GET, POST" });
   if (missing.length) return json({ error: "Telegram intake is not set up yet", missing }, 503);

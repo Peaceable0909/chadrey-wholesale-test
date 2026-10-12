@@ -1,9 +1,10 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { stableUuid } from "./ids";
 import { handleUpdate } from "./intake";
-import { baseEnv, createBackend, deps, EXAMPLE_CAPTION, failingBucket, failingDatabase, OWNER, photoUpdate, textUpdate, TOKEN, type Backend } from "./testkit";
+import { getProduct, updateProduct, type ProductInput } from "./store";
+import { AI_ANSWER, baseEnv, createBackend, deps, EXAMPLE_CAPTION, failingBucket, failingDatabase, OWNER, photoUpdate, puterError, puterOk, PUTER_TOKEN, qwenError, qwenOk, QWEN_KEY, textUpdate, TOKEN, type Backend } from "./testkit";
 import { createTestEnv, type TestEnv } from "./testEnv";
-import type { Env } from "./types";
+import type { Env, ImagesBinding, TelegramUpdate } from "./types";
 
 let test: TestEnv;
 let backend: Backend;
@@ -28,6 +29,12 @@ const lastReply = () => backend.state.sent[backend.state.sent.length - 1]?.text 
 async function products() {
   const rows = (await test.env.DB.prepare("SELECT * FROM products ORDER BY rowid").all()).results as Array<Record<string, any>>;
   return rows.map(row => ({ ...row, is_active: row.is_active === 1, price_tiers: JSON.parse(row.price_tiers) }));
+}
+/** Changes a saved product the way Admin does (this also sets its updated_at, which is how the bot can tell a person touched it). */
+async function editLikeAdmin(id: string, changes: Partial<ProductInput>) {
+  const product = (await getProduct(test.env.DB, { id }, { liveOnly: false }))!;
+  const { id: _id, slug: _slug, created_by: _by, created_at: _created, updated_at: _updated, product_images: _images, ...fields } = product;
+  await updateProduct(test.env.DB, id, { ...(fields as unknown as ProductInput), ...changes });
 }
 async function images() {
   const rows = (await test.env.DB.prepare("SELECT * FROM product_images ORDER BY sort_order, rowid").all()).results as Array<Record<string, any>>;
@@ -400,5 +407,777 @@ describe("what the bot needs", () => {
     const saved = await test.freshDb.prepare("SELECT name, is_active FROM products").all();
     expect(saved.results).toEqual([{ name: "100ml Original sugar marshmallow", is_active: 0 }]);
     await test.freshDb.batch([test.freshDb.prepare("DELETE FROM product_images"), test.freshDb.prepare("DELETE FROM products")]);
+  });
+});
+
+
+describe("smart drafting with AI", () => {
+  const withAi = (overrides: Partial<Env> = {}): Partial<Env> => ({ PUTER_AUTH_TOKEN: PUTER_TOKEN, ...overrides });
+  const aiAnswer = (overrides: Record<string, unknown> = {}) => JSON.stringify({ ...AI_ANSWER, ...overrides });
+
+  describe("a photo with only a few words", () => {
+    it("is saved at once, then the AI writes the description and the first reply is changed", async () => {
+      let whileWaiting = "";
+      backend.state.puterReply = async () => {
+        whileWaiting = lastReply();
+        return aiAnswer();
+      };
+      await run(photoUpdate(backend, { id: 200, caption: "Premium lunch box" }), withAi());
+
+      expect(whileWaiting).toContain("✅ Saved as a hidden draft");
+      expect(whileWaiting).toContain("✨ Writing the description from your photo…");
+      expect(backend.state.sent).toHaveLength(1);
+      expect(backend.state.edits).toHaveLength(1);
+      expect(backend.state.edits[0].message_id).toBe(9001);
+
+      const [saved] = await products();
+      expect(saved).toMatchObject({ name: "Premium lunch box", is_active: false, short_description: AI_ANSWER.short_description, description: AI_ANSWER.description, price_tiers: [] });
+      expect(JSON.parse(saved.colors)).toEqual(["beige", "black", "pink", "blue"]);
+
+      const reply = lastReply();
+      expect(reply).toContain("✨ Written by AI from your photo. Please check it before you show it in the store:");
+      expect(reply).toContain(AI_ANSWER.short_description);
+      expect(reply).toContain("Colours: beige, black, pink, blue (seen in the photo)");
+      expect(reply).toContain("Draft ID:");
+      expect(reply).not.toContain("Writing the description");
+    });
+
+    it("asks the AI with the photo, the name and the extra lines, but never the price or the minimum order", async () => {
+      await run(photoUpdate(backend, { id: 201, caption: "Premium lunch box\n24,000 wholesale\n30,000-35,000 Resell\nMOQ 24\nColors: pink, white" }), withAi());
+
+      expect(backend.state.puterCalls).toHaveLength(1);
+      const [call] = backend.state.puterCalls;
+      expect(call.body.auth_token).toBe(PUTER_TOKEN);
+      expect(call.body.args.model).toBe("claude-haiku-5-5");
+      const [prompt, photo] = call.body.args.messages[0].content;
+      expect(prompt).toContain("Product name: Premium lunch box");
+      expect(prompt).toContain("Colors: pink, white");
+      expect(prompt).not.toMatch(/24,000|30,000|35,000|MOQ 24|Resell/i);
+      expect(photo.image_url.url).toMatch(/^data:image\/jpeg;base64,/);
+    });
+
+    it("keeps the price, minimum order and currency from the caption, and drops order, price and stock claims the AI makes", async () => {
+      backend.state.puterReply = async () =>
+        aiAnswer({
+          description: "A sturdy lunch bag for daily use.\nWholesale price: ₦99,999 per piece.\nMinimum order 500 pieces.\nIn stock, ships in 2 days.\n\nPadded handle for comfortable carrying.",
+          price: 99999,
+          moq: 500,
+          availability: "in stock",
+        });
+      await run(photoUpdate(backend, { id: 202, caption: "Premium lunch box\n24,000 wholesale\nMOQ 24" }), withAi());
+
+      const [saved] = await products();
+      expect(saved).toMatchObject({ moq: 24, price_currency: "NGN", price_unit: "pc", price_tiers: [{ min_qty: 24, price: 24000 }], is_active: false });
+      expect(saved.description).toBe("A sturdy lunch bag for daily use.\n\nPadded handle for comfortable carrying.");
+      expect(JSON.stringify(saved)).not.toMatch(/99,?999|500 pieces|ships|availability/);
+    });
+
+    it("adds the owner's own extra lines under the AI's text, exactly as typed", async () => {
+      await run(photoUpdate(backend, { id: 203, caption: "Premium lunch box\nColors: pink, white\nComes in a gift box" }), withAi());
+      const [saved] = await products();
+      expect(saved.description).toBe(`${AI_ANSWER.description}\n\nColors: pink, white\nComes in a gift box`);
+    });
+
+    it("never saves the resell range, with or without the AI", async () => {
+      await run(photoUpdate(backend, { id: 204, caption: EXAMPLE_CAPTION }), withAi());
+      expect(JSON.stringify(await products())).not.toMatch(/55,?000|60,?000|resale|resell/i);
+      expect(JSON.stringify(backend.state.puterCalls)).not.toMatch(/55,?000|60,?000|resell/i);
+    });
+
+    it("lets a person add more photos by replying to the changed confirmation, without asking the AI again", async () => {
+      await run(photoUpdate(backend, { id: 290, caption: "Premium lunch box" }), withAi());
+      const confirmation = lastReply();
+      await run(photoUpdate(backend, { id: 291, replyToText: confirmation }), withAi());
+
+      expect(await images()).toHaveLength(2);
+      expect(lastReply()).toContain("📷 Added to “Premium lunch box”. It now has 2 photos.");
+      expect(backend.state.puterCalls).toHaveLength(1);
+    });
+  });
+
+  describe("categories", () => {
+    beforeEach(async () => {
+      await run(photoUpdate(backend, { id: 210, caption: "Leather handbag black\n#Bags\n20,000 wholesale" }));
+      await run(photoUpdate(backend, { id: 211, caption: "Cotton t-shirt\n#Apparel\n5,000 wholesale" }));
+      backend.state.sent.length = 0;
+      backend.state.edits.length = 0;
+    });
+    const draft = async (name: string) => (await products()).find(product => product.name === name)!;
+
+    it("offers the AI the shop's own categories and uses the one it picks", async () => {
+      backend.state.puterReply = async () => aiAnswer({ category: "bags" });
+      await run(photoUpdate(backend, { id: 212, caption: "Premium lunch box" }), withAi());
+
+      const prompt = backend.state.puterCalls[0].body.args.messages[0].content[0] as string;
+      expect(prompt).toMatch(/Allowed categories: \[(?=.*"Bags")(?=.*"Apparel").*\]/);
+      expect((await draft("Premium lunch box")).category).toBe("Bags");
+      expect(lastReply()).toContain("Category: Bags (suggested by AI)");
+    });
+
+    it("keeps the category typed in the message over the AI's", async () => {
+      backend.state.puterReply = async () => aiAnswer({ category: "Bags" });
+      await run(photoUpdate(backend, { id: 213, caption: "Premium lunch box\n#apparel" }), withAi());
+      expect((await draft("Premium lunch box")).category).toBe("Apparel");
+      expect(lastReply()).toContain("Category: Apparel\n");
+    });
+
+    it("ignores a category the shop does not have", async () => {
+      backend.state.puterReply = async () => aiAnswer({ category: "Lunch Boxes" });
+      await run(photoUpdate(backend, { id: 214, caption: "Premium lunch box" }), withAi());
+      expect((await draft("Premium lunch box")).category).toBe("Uncategorised");
+      expect(lastReply()).toContain("Category: Uncategorised (set it in admin)");
+    });
+
+    it("prefers the AI's pick to a guess from similar names", async () => {
+      backend.state.puterReply = async () => aiAnswer({ category: "Apparel" });
+      await run(photoUpdate(backend, { id: 215, caption: "Leather wallet" }), withAi());
+      expect((await draft("Leather wallet")).category).toBe("Apparel");
+      expect(lastReply()).toContain("Category: Apparel (suggested by AI)");
+    });
+
+    it("keeps the guess from similar names when the AI picks nothing", async () => {
+      await run(photoUpdate(backend, { id: 216, caption: "Leather wallet" }), withAi());
+      expect((await draft("Leather wallet")).category).toBe("Bags");
+      expect(lastReply()).toContain("Category: Bags (guessed from “Leather handbag black”)");
+    });
+  });
+
+  describe("without a Puter token", () => {
+    it("changes nothing: no AI calls, no changed messages, the same reply as before", async () => {
+      await run(photoUpdate(backend, { id: 220, caption: "Premium lunch box\n24,000 wholesale" }));
+      expect(backend.state.puterCalls).toHaveLength(0);
+      expect(backend.state.edits).toHaveLength(0);
+      expect(backend.state.sent).toHaveLength(1);
+      expect(lastReply()).not.toMatch(/✨|written by AI|writing the description/i);
+      const [saved] = await products();
+      expect(saved).toMatchObject({ short_description: "", description: "" });
+    });
+
+    it("still asks for the details when a photo comes with no words", async () => {
+      await run(photoUpdate(backend, { id: 221 }));
+      expect(await products()).toHaveLength(0);
+      expect(lastReply()).toContain("Add the product details as the photo's caption");
+    });
+  });
+
+  describe("when the AI does not work", () => {
+    it.each([
+      ["the token is rejected", () => puterError(401, "token_auth_failed", "bad"), /did not accept the token/],
+      ["the allowance is used up", () => puterError(402, "insufficient_funds", "no credit"), /allowance for AI is used up/],
+      ["Puter is busy", () => puterError(429, "too_many_requests", "slow down"), /busy/],
+      ["Puter has a problem", () => puterError(500, "internal", "Model overloaded"), /Model overloaded/],
+      ["the answer is not JSON", () => puterOk("Sorry, I can't help with that."), /could not be used/],
+      ["the description is too short", () => puterOk(JSON.stringify({ name: "x", description: "Nice." })), /could not be used/],
+      [
+        "Puter cannot be reached",
+        () => {
+          throw new TypeError("fetch failed");
+        },
+        /could not be reached/,
+      ],
+      [
+        "Puter takes too long",
+        () => {
+          throw new DOMException("The operation timed out.", "TimeoutError");
+        },
+        /took too long/,
+      ],
+    ])("saves the draft as typed and says why, when %s", async (_name, reply, expected) => {
+      backend.state.puterReply = reply as never;
+      await run(photoUpdate(backend, { id: 230, caption: "Premium lunch box\n24,000 wholesale\nColors: pink" }), withAi());
+
+      const [saved] = await products();
+      expect(saved).toMatchObject({ name: "Premium lunch box", is_active: false, short_description: "", description: "Colors: pink", price_tiers: [{ min_qty: 1, price: 24000 }] });
+      expect(lastReply()).toMatch(expected);
+      expect(lastReply()).toContain("The draft is saved as you sent it.");
+      expect(lastReply()).toContain("Draft ID:");
+      expect(JSON.stringify([backend.state.sent, errors.mock.calls])).not.toContain(PUTER_TOKEN);
+    });
+
+    it("sends a new message when the first one cannot be changed", async () => {
+      backend.state.failEdit = true;
+      await run(photoUpdate(backend, { id: 231, caption: "Premium lunch box" }), withAi());
+      expect(backend.state.sent).toHaveLength(2);
+      expect(backend.state.sent[0].text).toContain("Writing the description");
+      expect(lastReply()).toContain("✨ Written by AI");
+    });
+
+    it("never puts the Puter token in a reply, a log line or the saved product", async () => {
+      await run(photoUpdate(backend, { id: 232, caption: "Premium lunch box" }), withAi());
+      backend.state.puterReply = () => puterError(500, "x", `failed for ${PUTER_TOKEN}`);
+      await run(photoUpdate(backend, { id: 233, caption: "Another lunch box" }), withAi());
+      expect(JSON.stringify([backend.state.sent, errors.mock.calls, await products()])).not.toContain(PUTER_TOKEN);
+    });
+  });
+
+  describe("when the draft changes while the AI is writing", () => {
+    it("leaves a draft alone that was shown in the store meanwhile", async () => {
+      backend.state.puterReply = async () => {
+        await test.env.DB.prepare("UPDATE products SET is_active = 1").run();
+        return aiAnswer();
+      };
+      await run(photoUpdate(backend, { id: 240, caption: "Premium lunch box" }), withAi());
+      const [saved] = await products();
+      expect(saved).toMatchObject({ is_active: true, short_description: "", description: "" });
+      expect(lastReply()).toContain("changed while the AI was writing");
+      expect(lastReply()).not.toContain("✨ Written by AI");
+    });
+
+    it("leaves text a person typed meanwhile", async () => {
+      backend.state.puterReply = async () => {
+        await test.env.DB.prepare("UPDATE products SET description = 'Written by hand'").run();
+        return aiAnswer();
+      };
+      await run(photoUpdate(backend, { id: 241, caption: "Premium lunch box" }), withAi());
+      expect((await products())[0].description).toBe("Written by hand");
+      expect(lastReply()).toContain("changed while the AI was writing");
+    });
+  });
+
+  describe("a message delivered twice", () => {
+    it("asks the AI only once and saves one draft", async () => {
+      const update = photoUpdate(backend, { id: 250, caption: "Premium lunch box" });
+      await run(update, withAi());
+      await run(update, withAi());
+      expect(backend.state.puterCalls).toHaveLength(1);
+      expect(await products()).toHaveLength(1);
+    });
+  });
+
+  describe("albums", () => {
+    it("asks the AI once, with the first photo, and still adds the others", async () => {
+      await run(photoUpdate(backend, { id: 260, caption: "Premium lunch box", group: "album-ai" }), withAi());
+      await run(photoUpdate(backend, { id: 261, group: "album-ai" }), withAi());
+      await run(photoUpdate(backend, { id: 262, group: "album-ai" }), withAi());
+      expect(backend.state.puterCalls).toHaveLength(1);
+      expect(backend.state.puterCalls[0].body.args.messages[0].content).toHaveLength(2);
+      expect(await images()).toHaveLength(3);
+    });
+
+    it("lets a photo of the album join the draft even while the AI is still writing", async () => {
+      backend.state.puterReply = async () => {
+        await run(photoUpdate(backend, { id: 271, group: "album-ai-2" }), withAi());
+        return aiAnswer();
+      };
+      await run(photoUpdate(backend, { id: 270, caption: "Premium lunch box", group: "album-ai-2" }), withAi());
+      expect(await images()).toHaveLength(2);
+      expect((await products())[0].description).toBe(AI_ANSWER.description);
+    });
+
+    it("does not name an album from its photo alone, because its other photos would arrive too early", async () => {
+      await run(photoUpdate(backend, { id: 263, caption: "24,000 wholesale", group: "album-ai-3" }), withAi());
+      expect(await products()).toHaveLength(0);
+      expect(backend.state.puterCalls).toHaveLength(0);
+      expect(lastReply()).toContain("I couldn't find a product name");
+    });
+  });
+
+  describe("a photo with no name", () => {
+    it("is named and described by the AI when it is sent on its own, and the owner hears from the bot while the AI works", async () => {
+      let whileWaiting = "";
+      backend.state.puterReply = async () => {
+        whileWaiting = lastReply();
+        return aiAnswer();
+      };
+      await run(photoUpdate(backend, { id: 280 }), withAi());
+
+      expect(whileWaiting).toContain("✨ Looking at your photo to name and describe it…");
+      expect(whileWaiting).toContain("send the photo again");
+      expect(await products()).toHaveLength(1);
+
+      const [saved] = await products();
+      expect(saved).toMatchObject({ name: "Quilted Insulated Lunch Bag", slug: "quilted-insulated-lunch-bag", is_active: false, price_tiers: [], description: AI_ANSWER.description, short_description: AI_ANSWER.short_description });
+      expect(JSON.parse(saved.colors)).toEqual(["beige", "black", "pink", "blue"]);
+      expect(await images()).toHaveLength(1);
+      expect(backend.state.sent).toHaveLength(1);
+      expect(backend.state.edits).toHaveLength(1);
+      expect(lastReply()).not.toContain("Looking at your photo");
+      expect(lastReply()).toContain("✨ Written by AI");
+      expect(lastReply()).toContain("No price yet");
+      expect(backend.state.puterCalls[0].body.args.messages[0].content[0]).toContain("Product name: (not given)");
+    });
+
+    it("is named by the AI when the caption has a price but no name, and keeps that price", async () => {
+      await run(photoUpdate(backend, { id: 282, caption: "24,000 wholesale\nMOQ 12" }), withAi());
+      expect((await products())[0]).toMatchObject({ name: "Quilted Insulated Lunch Bag", moq: 12, price_tiers: [{ min_qty: 12, price: 24000 }] });
+    });
+
+    it("saves nothing and asks for the name when the AI cannot suggest one", async () => {
+      backend.state.puterReply = () => puterError(402, "insufficient_funds", "no credit");
+      await run(photoUpdate(backend, { id: 281 }), withAi());
+      expect(await products()).toHaveLength(0);
+      expect(await images()).toHaveLength(0);
+      expect(lastReply()).toContain("the AI could not suggest one: your Puter allowance for AI is used up");
+      expect(lastReply()).toContain("Put the name on the first line");
+      // The "looking" message was changed, not followed by a second one.
+      expect(backend.state.sent).toHaveLength(1);
+      expect(backend.state.edits).toHaveLength(1);
+      expect(lastReply()).not.toContain("Looking at your photo");
+    });
+  });
+
+  describe("the /ai command", () => {
+    it("explains how to switch AI on when it is off", async () => {
+      await run(textUpdate("/ai"));
+      expect(lastReply()).toContain("AI drafting is off");
+      expect(lastReply()).toContain("QWEN_API_KEY");
+      expect(backend.state.puterCalls).toHaveLength(0);
+    });
+
+    it("shows the AI a small red picture, and says it works with the service, the model and how long it took", async () => {
+      backend.state.puterReply = async () => "Red.";
+      await run(textUpdate("/ai@ShopBot"), withAi({ AI_MODEL: "claude-sonnet-5-5" }));
+      expect(lastReply()).toMatch(/✅ AI drafting works\.\nService: Puter\nModel: claude-sonnet-5-5\nIt looked at a small test picture and answered “Red\.” in \d+(\.\d)? s\./);
+      expect(backend.state.puterCalls).toHaveLength(1);
+      const [question, picture] = backend.state.puterCalls[0].body.args.messages[0].content;
+      expect(question).toContain("main colour of this picture");
+      expect(picture.image_url.url).toMatch(/^data:image\/png;base64,/);
+    });
+
+    it("warns when the answer does not sound like the AI saw the picture, for example a model that cannot read pictures", async () => {
+      backend.state.puterReply = async () => "I do not see any picture in your message.";
+      await run(textUpdate("/ai"), withAi({ AI_MODEL: "some-text-only-model" }));
+      expect(lastReply()).toContain("answered, but not as if it could see the test picture");
+      expect(lastReply()).toContain("Model: some-text-only-model");
+      expect(lastReply()).toContain("AI_MODEL");
+      expect(lastReply()).not.toContain("✅");
+    });
+
+    it("says what Puter said when the AI does not work", async () => {
+      backend.state.puterReply = () => puterError(401, "token_auth_failed", "bad");
+      await run(textUpdate("/ai"), withAi());
+      expect(lastReply()).toContain("AI drafting is switched on, but Puter did not accept the token");
+      expect(lastReply()).toContain("Drafts are still saved exactly as you send them.");
+      expect(JSON.stringify([backend.state.sent, errors.mock.calls])).not.toContain(PUTER_TOKEN);
+    });
+
+    it("is for the shop team only, and costs nothing for anyone else", async () => {
+      await run(textUpdate("/ai", { from: 5555 }), withAi());
+      expect(lastReply()).toContain("Only the shop team");
+      expect(backend.state.puterCalls).toHaveLength(0);
+    });
+
+    it("is mentioned in the help once AI is on, and the help promises no price from the AI", async () => {
+      await run(textUpdate("/help"), withAi());
+      expect(lastReply()).toContain("write the rest (description, category, colours) with AI");
+      expect(lastReply()).toContain("The price and the minimum order come only from what you type");
+      expect(lastReply()).toContain("/ai");
+    });
+  });
+});
+
+
+describe("AI drafting: when Puter is busy, and the /redo command", () => {
+  const withAi = (overrides: Partial<Env> = {}): Partial<Env> => ({ PUTER_AUTH_TOKEN: PUTER_TOKEN, ...overrides });
+  const aiAnswer = (overrides: Record<string, unknown> = {}) => JSON.stringify({ ...AI_ANSWER, ...overrides });
+  /** "/redo" (or the plain word "redo") sent as a reply to one of the bot's messages. */
+  const redo = (replyText: string, word = "/redo"): TelegramUpdate => ({
+    update_id: 1,
+    message: { message_id: 2, from: { id: OWNER, is_bot: false }, chat: { id: OWNER, type: "private" }, text: word, reply_to_message: { message_id: 1, from: { is_bot: true }, text: replyText } },
+  });
+
+  it("asks again when Puter says it is busy, and the draft still gets its text", async () => {
+    let asked = 0;
+    backend.state.puterReply = async () => (++asked === 1 ? puterError(429, "too_many_requests", "slow down") : aiAnswer());
+    const sleep = vi.fn(async () => undefined);
+    await run(photoUpdate(backend, { id: 300, caption: "Premium lunch box" }), withAi(), { sleep });
+    expect(backend.state.puterCalls).toHaveLength(2);
+    expect(sleep).toHaveBeenCalledTimes(1);
+    expect((await products())[0].description).toBe(AI_ANSWER.description);
+    expect(lastReply()).toContain("✨ Written by AI");
+  });
+
+  it("tells how to try again when the AI fails, and /redo then writes the description", async () => {
+    await run(photoUpdate(backend, { id: 301, caption: "Leather handbag black\n#Bags\n20,000 wholesale" }));
+    backend.state.puterReply = () => puterError(402, "insufficient_funds", "no credit");
+    await run(photoUpdate(backend, { id: 302, caption: "Premium lunch box\nColors: black" }), withAi());
+    const failed = lastReply();
+    expect(failed).toContain("To try again, reply to this message with the word redo.");
+    expect(failed).not.toContain("/redo");
+    expect((await products()).find(product => product.name === "Premium lunch box")).toMatchObject({ short_description: "", description: "Colors: black", category: "Uncategorised" });
+
+    backend.state.puterReply = async () => aiAnswer({ category: "Bags" });
+    backend.state.puterCalls.length = 0;
+    await run(redo(failed), withAi());
+
+    const saved = (await products()).find(product => product.name === "Premium lunch box")!;
+    expect(saved).toMatchObject({ short_description: AI_ANSWER.short_description, description: `${AI_ANSWER.description}\n\nColors: black`, category: "Bags", is_active: false });
+    expect(JSON.parse(saved.colors)).toEqual(["beige", "black", "pink", "blue"]);
+    const [call] = backend.state.puterCalls;
+    expect(call.body.args.messages[0].content[0]).toContain("Colors: black");
+    expect(call.body.args.messages[0].content[1].image_url.url).toMatch(/^data:image\/jpeg;base64,/);
+    expect(lastReply()).toContain("✨ Written by AI from your photo for “Premium lunch box”");
+    expect(lastReply()).toContain("Category: Bags (suggested by AI)");
+    expect(lastReply()).toContain(`Draft ID: ${saved.id}`);
+  });
+
+  it("says how /redo works when it is not sent as a reply to a draft", async () => {
+    await run(textUpdate("/redo"), withAi());
+    expect(lastReply()).toContain("Reply to a draft's message with the word redo");
+    expect(backend.state.puterCalls).toHaveLength(0);
+  });
+
+  it("explains that AI is off, without asking anything", async () => {
+    await run(photoUpdate(backend, { id: 303, caption: "Premium lunch box" }));
+    await run(redo(lastReply()));
+    expect(lastReply()).toContain("AI drafting is off");
+    expect(backend.state.puterCalls).toHaveLength(0);
+  });
+
+  it("never touches a product that is already live", async () => {
+    backend.state.puterReply = () => puterError(500, "x", "down");
+    await run(photoUpdate(backend, { id: 304, caption: "Premium lunch box" }), withAi());
+    const failed = lastReply();
+    await test.env.DB.prepare("UPDATE products SET is_active = 1").run();
+    backend.state.puterCalls.length = 0;
+    await run(redo(failed), withAi());
+    expect(lastReply()).toContain("is already live");
+    expect(backend.state.puterCalls).toHaveLength(0);
+    expect((await products())[0].description).toBe("");
+  });
+
+  it("leaves a draft alone that already has AI-written text", async () => {
+    await run(photoUpdate(backend, { id: 305, caption: "Premium lunch box" }), withAi());
+    const done = lastReply();
+    backend.state.puterCalls.length = 0;
+    await run(redo(done), withAi());
+    expect(lastReply()).toContain("already has AI-written text");
+    expect(backend.state.puterCalls).toHaveLength(0);
+  });
+
+  it("says so when the draft has no photo to look at", async () => {
+    await run(photoUpdate(backend, { id: 306, caption: "Premium lunch box" }), withAi({ PHOTOS: failingBucket(test.env.PHOTOS, new Error("storage down")) }));
+    const noPhoto = lastReply();
+    expect(noPhoto).toContain("the photo did not upload");
+    await run(redo(noPhoto), withAi());
+    expect(lastReply()).toContain("has no photo for the AI to look at");
+    expect(backend.state.puterCalls).toHaveLength(0);
+  });
+
+  it("does not overwrite text a person changed while the AI was writing", async () => {
+    backend.state.puterReply = () => puterError(500, "x", "down");
+    await run(photoUpdate(backend, { id: 307, caption: "Premium lunch box" }), withAi());
+    const failed = lastReply();
+    backend.state.puterReply = async () => {
+      await test.env.DB.prepare("UPDATE products SET description = 'Written by hand'").run();
+      return aiAnswer();
+    };
+    await run(redo(failed), withAi());
+    expect((await products())[0].description).toBe("Written by hand");
+    expect(lastReply()).toContain("was changed while the AI was writing");
+  });
+
+  it("reports a failure and keeps the way to try again", async () => {
+    backend.state.puterReply = () => puterError(500, "x", "down");
+    await run(photoUpdate(backend, { id: 308, caption: "Premium lunch box" }), withAi());
+    await run(redo(lastReply()), withAi());
+    expect(lastReply()).toContain("I couldn't write the description with AI");
+    expect(lastReply()).toContain("To try again, reply to this message with the word redo.");
+    expect(lastReply()).not.toContain("/redo");
+    expect(lastReply()).toContain("Draft ID:");
+  });
+});
+
+describe("drafts that people edit, and messages that arrive twice", () => {
+  const withAi = (overrides: Partial<Env> = {}): Partial<Env> => ({ PUTER_AUTH_TOKEN: PUTER_TOKEN, ...overrides });
+  const aiAnswer = (overrides: Record<string, unknown> = {}) => JSON.stringify({ ...AI_ANSWER, ...overrides });
+  const redo = (replyText: string, word = "/redo"): TelegramUpdate => ({
+    update_id: 1,
+    message: { message_id: 2, from: { id: OWNER, is_bot: false }, chat: { id: OWNER, type: "private" }, text: word, reply_to_message: { message_id: 1, from: { is_bot: true }, text: replyText } },
+  });
+  const savedId = async () => String((await products())[0].id);
+
+  it("leaves colours that an admin set while the AI was writing, and with them the whole AI text", async () => {
+    backend.state.puterReply = async () => {
+      await editLikeAdmin(await savedId(), { colors: ["Sage", "Sand"] });
+      return aiAnswer({ colors: ["red", "green"] });
+    };
+    await run(photoUpdate(backend, { id: 400, caption: "Premium lunch box" }), withAi());
+
+    const [saved] = await products();
+    expect(JSON.parse(saved.colors)).toEqual(["Sage", "Sand"]);
+    expect(saved).toMatchObject({ short_description: "", description: "" });
+    expect(lastReply()).toContain("changed while the AI was writing");
+    expect(lastReply()).not.toContain("Colours: red");
+  });
+
+  it("leaves a price that an admin changed while the AI was writing", async () => {
+    backend.state.puterReply = async () => {
+      await editLikeAdmin(await savedId(), { price_tiers: [{ min_qty: 1, price: 99_999 }] });
+      return aiAnswer();
+    };
+    await run(photoUpdate(backend, { id: 401, caption: "Premium lunch box\n24,000 wholesale" }), withAi());
+
+    const [saved] = await products();
+    expect(saved.price_tiers).toEqual([{ min_qty: 1, price: 99_999 }]);
+    expect(saved.description).toBe("");
+    expect(lastReply()).toContain("changed while the AI was writing");
+  });
+
+  it("asks the AI only once when the same message arrives twice at the same moment", async () => {
+    const update = photoUpdate(backend, { id: 402, caption: "Premium lunch box" });
+    await Promise.all([run(update, withAi()), run(update, withAi())]);
+
+    expect(backend.state.puterCalls).toHaveLength(1);
+    const saved = await products();
+    expect(saved).toHaveLength(1);
+    expect(saved[0].description).toBe(AI_ANSWER.description);
+    expect(await images()).toHaveLength(1);
+  });
+
+  it("sends the AI the shrunk photo when the image resizer is there", async () => {
+    const shrunk = new Uint8Array([0xff, 0xd8, 0xff, 9, 9]);
+    const IMAGES: ImagesBinding = {
+      input: () => {
+        const chain = { transform: () => chain, output: async () => ({ response: () => new Response(shrunk) }) };
+        return chain;
+      },
+    };
+    await run(photoUpdate(backend, { id: 403, caption: "Premium lunch box" }), withAi({ IMAGES }));
+    const photo = backend.state.puterCalls[0].body.args.messages[0].content[1];
+    expect(photo.image_url.url).toBe(`data:image/jpeg;base64,${btoa(String.fromCharCode(...shrunk))}`);
+    expect((await products())[0].description).toBe(AI_ANSWER.description);
+  });
+
+  describe("redo", () => {
+    it("leaves a draft alone that a person edited, even when the short description was left blank", async () => {
+      backend.state.puterReply = () => puterError(500, "x", "down");
+      await run(photoUpdate(backend, { id: 410, caption: "Premium lunch box\nColors: black" }), withAi());
+      const failed = lastReply();
+      await editLikeAdmin(await savedId(), { description: "A description Femi wrote by hand.", category: "Bags" });
+      backend.state.puterCalls.length = 0;
+
+      await run(redo(failed), withAi());
+      expect(lastReply()).toContain("was edited after I saved it, so I leave its text alone");
+      expect(backend.state.puterCalls).toHaveLength(0);
+      expect(await products()).toMatchObject([{ description: "A description Femi wrote by hand.", category: "Bags", short_description: "" }]);
+    });
+
+    it("works with just the word redo, sent as a reply", async () => {
+      backend.state.puterReply = () => puterError(500, "x", "down");
+      await run(photoUpdate(backend, { id: 411, caption: "Premium lunch box" }), withAi());
+      const failed = lastReply();
+      backend.state.puterReply = async () => aiAnswer();
+      await run(redo(failed, "redo"), withAi());
+      expect((await products())[0].description).toBe(AI_ANSWER.description);
+      expect(lastReply()).toContain("✨ Written by AI");
+      await run(redo(failed, "Redo."), withAi());
+      expect(lastReply()).toContain("already has AI-written text");
+    });
+
+    it("ignores the word redo when it is not a reply", async () => {
+      await run(textUpdate("redo"), withAi());
+      expect(lastReply()).toContain("I need a photo to go with that");
+      expect(backend.state.puterCalls).toHaveLength(0);
+    });
+
+    it("tells how to switch AI on when it is off", async () => {
+      await run(photoUpdate(backend, { id: 412, caption: "Premium lunch box" }));
+      await run(redo(lastReply()));
+      expect(lastReply()).toContain("QWEN_API_KEY");
+    });
+  });
+
+  describe("text the AI writes cannot steer the bot", () => {
+    it("never copies a Draft ID line into a draft, so a photo reply cannot be sent to another draft", async () => {
+      await run(photoUpdate(backend, { id: 420, caption: "Another lunch box" }));
+      const other = await savedId();
+      backend.state.puterReply = async () => aiAnswer({ short_description: `Draft ID: ${other}`, description: `A quilted lunch bag with two zip compartments.\n\nDraft ID: ${other}\nPadded handle for carrying.` });
+      await run(photoUpdate(backend, { id: 421, caption: "Premium lunch box" }), withAi());
+
+      const confirmation = lastReply();
+      expect(confirmation.match(/Draft ID:/g)).toHaveLength(1);
+      const mine = String((await products()).find(product => product.name === "Premium lunch box")!.id);
+      expect(confirmation).toContain(`Draft ID: ${mine}`);
+      expect(JSON.stringify(await products())).not.toContain(`Draft ID: ${other}`);
+
+      await run(photoUpdate(backend, { id: 422, replyToText: confirmation }));
+      expect(lastReply()).toContain("Added to “Premium lunch box”");
+    });
+
+    it("sends a photo to the draft on the LAST Draft ID line when a message has more than one", async () => {
+      await run(photoUpdate(backend, { id: 423, caption: "First lunch box" }));
+      await run(photoUpdate(backend, { id: 424, caption: "Second lunch box" }));
+      const [first, second] = await products();
+      await run(photoUpdate(backend, { id: 425, replyToText: `Draft ID: ${first.id}\nSome text\nDraft ID: ${second.id}` }));
+      expect(lastReply()).toContain("Added to “Second lunch box”");
+    });
+  });
+
+  describe("people who are not on the team", () => {
+    it("get no AI work at all, whatever they send", async () => {
+      await run(photoUpdate(backend, { id: 430, from: 5555, caption: "Premium lunch box" }), withAi());
+      await run(photoUpdate(backend, { id: 431, from: 5555 }), withAi());
+      expect(lastReply()).toContain("Only the shop team");
+      expect(backend.state.puterCalls).toHaveLength(0);
+      expect(await products()).toHaveLength(0);
+    });
+  });
+
+  describe("a name the AI makes up", () => {
+    it("is never used when it has a price in it: the draft is kept under a stand-in name, and the reply says to change it", async () => {
+      backend.state.puterReply = async () => aiAnswer({ name: "Lunch Bag ₦5,000 In Stock" });
+      await run(photoUpdate(backend, { id: 440 }), withAi());
+
+      const [saved] = await products();
+      expect(saved).toMatchObject({ name: "New product", is_active: false, description: AI_ANSWER.description, price_tiers: [] });
+      expect(JSON.stringify(saved)).not.toMatch(/5,000|In Stock/);
+      expect(await images()).toHaveLength(1);
+      expect(lastReply()).toContain("New product");
+      expect(lastReply()).toContain("The AI could not suggest a usable name, so please give this product a name in Admin before you show it.");
+      expect(lastReply()).not.toContain("5,000");
+    });
+
+    it("keeps the rest of a name when one ordinary word in it is the problem", async () => {
+      backend.state.puterReply = async () => aiAnswer({ name: "Stainless Steel Stock Pot" });
+      await run(photoUpdate(backend, { id: 441 }), withAi());
+      expect((await products())[0].name).toBe("Stainless Steel Pot");
+      expect(lastReply()).not.toContain("please give this product a name");
+    });
+  });
+
+  describe("without an AI key", () => {
+    it("turns a caption with no name down before reading or saving anything, exactly as before the AI existed", async () => {
+      const broken = failingDatabase(test.env.DB, sql => /FROM products/i.test(sql), new Error("must not be read"));
+      await run(photoUpdate(backend, { id: 450, caption: "24,000 wholesale" }), { DB: broken });
+      expect(lastReply()).toContain("I couldn't find a product name in that caption");
+      expect(broken.failures).toBe(0);
+      expect(await products()).toHaveLength(0);
+    });
+  });
+});
+
+describe("with Alibaba's Qwen", () => {
+  const withQwen = (overrides: Partial<Env> = {}): Partial<Env> => ({ QWEN_API_KEY: QWEN_KEY, ...overrides });
+  const aiAnswer = (overrides: Record<string, unknown> = {}) => JSON.stringify({ ...AI_ANSWER, ...overrides });
+
+  it("writes the description the same way, asking Alibaba and not Puter", async () => {
+    await run(photoUpdate(backend, { id: 500, caption: "Premium lunch box\n24,000 wholesale" }), withQwen());
+
+    expect(backend.state.qwenCalls).toHaveLength(1);
+    expect(backend.state.puterCalls).toHaveLength(0);
+    const [saved] = await products();
+    expect(saved).toMatchObject({ name: "Premium lunch box", is_active: false, short_description: AI_ANSWER.short_description, description: AI_ANSWER.description, price_tiers: [{ min_qty: 1, price: 24000 }] });
+    expect(JSON.parse(saved.colors)).toEqual(["beige", "black", "pink", "blue"]);
+    expect(lastReply()).toContain("✨ Written by AI from your photo");
+    expect(backend.state.edits).toHaveLength(1);
+  });
+
+  it("sends the question and the photo to Alibaba's international address, with thinking switched off and no price", async () => {
+    await run(photoUpdate(backend, { id: 501, caption: "Premium lunch box\n24,000 wholesale\nMOQ 24\nColors: pink, white" }), withQwen());
+
+    const [call] = backend.state.qwenCalls;
+    expect(call.url).toBe("https://dashscope-intl.aliyuncs.com/compatible-mode/v1/chat/completions");
+    expect(call.headers.authorization).toBe(`Bearer ${QWEN_KEY}`);
+    expect(call.body.model).toBe("qwen3-vl-plus");
+    expect(call.body.enable_thinking).toBe(false);
+    const [question, photo] = call.body.messages[0].content;
+    expect(question.type).toBe("text");
+    expect(question.text).toContain("Product name: Premium lunch box");
+    expect(question.text).toContain("Colors: pink, white");
+    expect(question.text).not.toMatch(/24,000|MOQ 24/);
+    expect(photo.image_url.url).toMatch(/^data:image\/jpeg;base64,/);
+  });
+
+  it("uses the model from AI_MODEL", async () => {
+    await run(photoUpdate(backend, { id: 502, caption: "Premium lunch box" }), withQwen({ AI_MODEL: "qwen3.8-flash" }));
+    expect(backend.state.qwenCalls[0].body.model).toBe("qwen3.8-flash");
+  });
+
+  it("goes to the address in QWEN_API_BASE when it is Alibaba's own, and to the built-in one when it is not", async () => {
+    await run(photoUpdate(backend, { id: 503, caption: "Premium lunch box" }), withQwen({ QWEN_API_BASE: "https://abc123.ap-southeast-1.maas.aliyuncs.com" }));
+    expect(backend.state.qwenCalls[0].url).toBe("https://abc123.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1/chat/completions");
+
+    await run(photoUpdate(backend, { id: 504, caption: "Another lunch box" }), withQwen({ QWEN_API_BASE: "https://evil.example.com/compatible-mode/v1" }));
+    expect(backend.state.qwenCalls[1].url).toBe("https://dashscope-intl.aliyuncs.com/compatible-mode/v1/chat/completions");
+    expect(backend.state.requests.some(request => request.url.includes("evil.example"))).toBe(false);
+  });
+
+  it("is used instead of Puter when both are set up", async () => {
+    await run(photoUpdate(backend, { id: 505, caption: "Premium lunch box" }), withQwen({ PUTER_AUTH_TOKEN: PUTER_TOKEN }));
+    expect(backend.state.qwenCalls).toHaveLength(1);
+    expect(backend.state.puterCalls).toHaveLength(0);
+  });
+
+  it("asks again when Alibaba says it is busy, and the draft still gets its text", async () => {
+    let asked = 0;
+    backend.state.qwenReply = async () => (++asked === 1 ? qwenError(429, "limit_requests", "Requests rate limit exceeded, please try again later.") : aiAnswer());
+    const sleep = vi.fn(async () => undefined);
+    await run(photoUpdate(backend, { id: 506, caption: "Premium lunch box" }), withQwen(), { sleep });
+    expect(backend.state.qwenCalls).toHaveLength(2);
+    expect(sleep).toHaveBeenCalledTimes(1);
+    expect((await products())[0].description).toBe(AI_ANSWER.description);
+  });
+
+  it.each([
+    ["the key is rejected", () => qwenError(401, "invalid_api_key", "Incorrect API key provided."), /Alibaba Cloud did not accept the API key/],
+    ["the account is overdue", () => qwenError(400, "Arrearage", "Access denied, please make sure your account is in good standing."), /the free allowance for this is used up, or the account has no money left/],
+    ["the free allowance is used up", () => qwenError(403, "AllocationQuota.FreeTierOnly", "The free tier of the model has been exhausted."), /Free Quota page and Billing/],
+    ["Model Studio was never switched on", () => qwenError(403, "AccessDenied.Unpurchased", "Service not activated. Activate it in the console."), /Model Studio is not switched on for this account/],
+    ["Alibaba is busy", () => qwenError(429, "limit_requests", "slow down"), /Alibaba Cloud is busy/],
+    ["the safety check refuses the photo", () => qwenError(400, "data_inspection_failed", "Input or output data may contain inappropriate content."), /safety check refused this photo/],
+    ["the model is not there", () => qwenError(404, "model_not_found", "The model xxx does not exist or you do not have access to it."), /Remove the AI_MODEL setting/],
+    ["Alibaba has a problem", () => qwenError(500, "internal_error", "An internal error has occured, please try again later."), /Alibaba Cloud is busy right now/],
+    ["the answer is not JSON", () => qwenOk("Sorry, I can't help with that."), /could not be used/],
+    [
+      "Alibaba cannot be reached",
+      () => {
+        throw new TypeError("fetch failed");
+      },
+      /Alibaba Cloud could not be reached/,
+    ],
+  ])("saves the draft as typed and says why, when %s", async (_name, reply, expected) => {
+    backend.state.qwenReply = reply as never;
+    await run(photoUpdate(backend, { id: 510, caption: "Premium lunch box\n24,000 wholesale\nColors: pink" }), withQwen(), { sleep: async () => undefined });
+
+    const [saved] = await products();
+    expect(saved).toMatchObject({ name: "Premium lunch box", is_active: false, short_description: "", description: "Colors: pink", price_tiers: [{ min_qty: 1, price: 24000 }] });
+    expect(lastReply()).toMatch(expected);
+    expect(lastReply()).toContain("The draft is saved as you sent it.");
+    expect(lastReply()).not.toContain("..");
+    expect(JSON.stringify([backend.state.sent, errors.mock.calls])).not.toContain(QWEN_KEY);
+  });
+
+  it("never puts the key in a reply, a log line or the saved product, even when Alibaba repeats it", async () => {
+    backend.state.qwenReply = () => qwenError(500, "x", `failed for ${QWEN_KEY}`);
+    await run(photoUpdate(backend, { id: 511, caption: "Premium lunch box" }), withQwen());
+    expect(JSON.stringify([backend.state.sent, errors.mock.calls, await products()])).not.toContain(QWEN_KEY);
+  });
+
+  it("does not send a GIF, which Alibaba's documentation does not list, and says so", async () => {
+    backend.addTelegramFile("gif-big", 2048, "photos/gif-big.gif");
+    await run(photoUpdate(backend, { id: 512, caption: "Premium lunch box", sizes: [{ file_id: "gif-big", file_unique_id: "gifu", width: 1280, height: 1280, file_size: 2048 }] }), withQwen());
+    expect(backend.state.qwenCalls).toHaveLength(0);
+    expect(lastReply()).toContain("That picture is not in a format the AI can read");
+    expect(await images()).toHaveLength(1);
+  });
+
+  it("can be rewritten later with redo, asking Alibaba again", async () => {
+    backend.state.qwenReply = () => qwenError(402, "Arrearage", "no funds");
+    await run(photoUpdate(backend, { id: 513, caption: "Premium lunch box" }), withQwen());
+    const failed = lastReply();
+    expect(failed).toContain("To try again, reply to this message with the word redo.");
+    backend.state.qwenReply = async () => aiAnswer();
+    await run(
+      { update_id: 1, message: { message_id: 2, from: { id: OWNER, is_bot: false }, chat: { id: OWNER, type: "private" }, text: "redo", reply_to_message: { message_id: 1, from: { is_bot: true }, text: failed } } },
+      withQwen(),
+    );
+    expect((await products())[0].description).toBe(AI_ANSWER.description);
+  });
+
+  describe("the /ai command", () => {
+    it("shows Alibaba the red picture and says it works", async () => {
+      backend.state.qwenReply = async () => "Red";
+      await run(textUpdate("/ai"), withQwen());
+      expect(lastReply()).toMatch(/✅ AI drafting works\.\nService: Alibaba Cloud \(Qwen\)\nModel: qwen3-vl-plus\nIt looked at a small test picture and answered “Red” in \d+(\.\d)? s\./);
+      const [, picture] = backend.state.qwenCalls[0].body.messages[0].content;
+      expect(picture.image_url.url).toMatch(/^data:image\/png;base64,/);
+    });
+
+    it("says what Alibaba said when the key is wrong", async () => {
+      await run(textUpdate("/ai"), withQwen({ QWEN_API_KEY: "a-wrong-key-123456" }));
+      expect(lastReply()).toContain("AI drafting is switched on, but Alibaba Cloud did not accept the API key");
+      expect(JSON.stringify([backend.state.sent, errors.mock.calls])).not.toContain("a-wrong-key-123456");
+    });
   });
 });

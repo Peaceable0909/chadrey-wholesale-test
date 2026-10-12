@@ -136,11 +136,29 @@ describe("GET /api/telegram", () => {
   it("shows whether the setup is complete without revealing any value", async () => {
     const { ctx } = context();
     const ready = await handleTelegramRequest(new Request("https://shop.test/api/telegram"), env(), ctx);
-    expect(await ready.json()).toEqual({ ready: true, missing: [], allowedUsers: 2 });
+    expect(await ready.json()).toEqual({ ready: true, missing: [], allowedUsers: 2, ai: false, aiService: null });
 
     const empty = await handleTelegramRequest(new Request("https://shop.test/api/telegram"), env({ TELEGRAM_BOT_TOKEN: "", TELEGRAM_ALLOWED_USER_IDS: "" }), ctx);
     const body = (await empty.json()) as { ready: boolean; missing: string[]; allowedUsers: number };
-    expect(body).toEqual({ ready: false, missing: ["TELEGRAM_BOT_TOKEN"], allowedUsers: 0 });
+    expect(body).toEqual({ ready: false, missing: ["TELEGRAM_BOT_TOKEN"], allowedUsers: 0, ai: false, aiService: null });
+  });
+
+  it("says whether AI drafting is switched on, and which service answers, without revealing any key", async () => {
+    const { ctx } = context();
+    const status = async (extra: Partial<Env>) => {
+      const response = await handleTelegramRequest(new Request("https://shop.test/api/telegram"), env(extra), ctx);
+      return response.text();
+    };
+    const qwen = await status({ QWEN_API_KEY: "qwen-secret-key-value" });
+    expect(JSON.parse(qwen)).toMatchObject({ ready: true, ai: true, aiService: "qwen" });
+    expect(qwen).not.toContain("qwen-secret-key-value");
+
+    const puter = await status({ PUTER_AUTH_TOKEN: "puter-secret-token-value" });
+    expect(JSON.parse(puter)).toMatchObject({ ready: true, ai: true, aiService: "puter" });
+    expect(puter).not.toContain("puter-secret-token-value");
+
+    // With both set, Alibaba's Qwen answers.
+    expect(JSON.parse(await status({ QWEN_API_KEY: "q-key-1234567", PUTER_AUTH_TOKEN: "p-token-1234567" }))).toMatchObject({ aiService: "qwen" });
   });
 
   it("is not ready until at least one person is allowed", async () => {

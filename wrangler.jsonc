@@ -39,8 +39,10 @@
   "images": {
     "binding": "IMAGES"
   },
-  // Public settings only. The bot token, the webhook secret and the allowed Telegram ids are NOT here:
-  // they are added in the Cloudflare dashboard as type "Secret" (Workers & Pages > chadrey-wholesale > Settings > Variables and Secrets).
+  // Public settings only. The bot token, the webhook secret, the allowed Telegram ids and the AI key (QWEN_API_KEY from Alibaba Cloud, or
+  // PUTER_AUTH_TOKEN from Puter; optional, either one switches on AI drafting) are NOT here: they are added in the Cloudflare dashboard as
+  // type "Secret" (Workers & Pages > chadrey-wholesale > Settings > Variables and Secrets). Optional plain variables there: AI_MODEL
+  // changes the AI model, QWEN_API_BASE holds the "API Host" Alibaba shows when the key is made (only if the built-in address does not suit the key).
   "vars": {
     // Sign-in still lives in Supabase for now. The Worker uses these two public values to ask Supabase whether
     // the person changing the shop is an administrator. The key is the same public key the website already contains.
