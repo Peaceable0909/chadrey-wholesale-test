@@ -1,5 +1,5 @@
 import * as React from "react";
-import { ChartColumn, Ellipsis, Inbox, LayoutDashboard, LogOut, Package, PackagePlus, Store, Truck, Users, type LucideIcon } from "lucide-react";
+import { ChartColumn, Ellipsis, Inbox, LayoutDashboard, LogOut, Package, PackagePlus, Settings, Store, Truck, Users, type LucideIcon } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { BackLink, Badge, ListGroup, ListRow, Logo, PageHeader, Sheet } from "@/components/ios";
@@ -58,10 +58,16 @@ function Sidebar({ path }: { path: string }) {
         <SidebarGroup title="Operations" items={OPERATIONS} path={path} />
         <SidebarGroup title="Catalogue" items={CATALOGUE} path={path} />
       </div>
-      <Link href="/" className="mt-auto flex h-10 items-center gap-3 rounded-[10px] px-3 text-body text-label-2 transition-colors hover:bg-fill-4 hover:text-label">
-        <Store className="size-5" strokeWidth={1.7} aria-hidden />
-        Back to store
-      </Link>
+      <div className="mt-auto space-y-0.5">
+        <Link href="/account" className="flex h-10 items-center gap-3 rounded-[10px] px-3 text-body text-label-2 transition-colors hover:bg-fill-4 hover:text-label">
+          <Settings className="size-5" strokeWidth={1.7} aria-hidden />
+          Settings
+        </Link>
+        <Link href="/" className="flex h-10 items-center gap-3 rounded-[10px] px-3 text-body text-label-2 transition-colors hover:bg-fill-4 hover:text-label">
+          <Store className="size-5" strokeWidth={1.7} aria-hidden />
+          Back to store
+        </Link>
+      </div>
     </aside>
   );
 }
@@ -111,6 +117,7 @@ function MobileTabBar({ path }: { path: string }) {
             <ListRow href="/admin/users" icon={<Users />} tone="purple" title="Users" chevron onClick={() => setMoreOpen(false)} />
           </ListGroup>
           <ListGroup>
+            <ListRow href="/account" icon={<Settings />} tone="gray" title="Settings" chevron onClick={() => setMoreOpen(false)} />
             <ListRow href="/" icon={<Store />} tone="blue" title="Back to store" chevron onClick={() => setMoreOpen(false)} />
             <ListRow
               icon={<LogOut />}
