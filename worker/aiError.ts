@@ -58,15 +58,16 @@ export function aiProblem(error: unknown): string {
   const service = provider ? (provider === "qwen" ? "Alibaba Cloud" : "Puter") : "the AI service";
   switch (error.kind) {
     case "auth":
-      if (provider === "qwen") return "Alibaba Cloud did not accept the API key. It may be wrong or deleted, or it was made in a different region. Create a new key in Model Studio (Singapore) and replace QWEN_API_KEY in Cloudflare";
+      if (provider === "qwen") return "Alibaba Cloud did not accept the API key. It may be wrong or deleted, or it was made in a different region. Create a new key in Model Studio (Singapore) and replace QWEN_API_KEY in Cloudflare. If a new key is refused too, add the “API Host” shown when the key is made as the text variable QWEN_API_BASE";
       if (provider === "puter") return "Puter did not accept the token (it may be wrong or revoked). Create a new token in your Puter account and replace PUTER_AUTH_TOKEN in Cloudflare";
       return "the AI service did not accept its key";
     case "email":
       return `${service} wants the email address of that account confirmed before it allows AI. Sign in there, confirm the email, then try again`;
     case "credit":
-      if (provider === "qwen") return "Alibaba Cloud says there is no free allowance or money left for this. In its console open Model Studio > Free Quota and Billing (a new account has to verify its identity before it can add money)";
+      if (provider === "qwen") return "Alibaba Cloud says the free allowance for this is used up, or the account has no money left. In its console open the Free Quota page and Billing (a new account has to verify its identity before it can add money)";
       return "your Puter allowance for AI is used up for now. It resets next month, or you can add credit in your Puter account";
     case "plan":
+      if (provider === "qwen") return "Alibaba Cloud says Model Studio is not switched on for this account yet. Open Model Studio in the Alibaba Cloud console, agree to its terms to activate it, then try again";
       return "Puter says this needs a paid Puter plan, and waiting will not change that. If you set AI_MODEL in Cloudflare, remove it or choose another model; otherwise upgrade the Puter account";
     case "model":
       return "that AI model cannot be used with this account. Remove the AI_MODEL setting in Cloudflare to use the standard one, or choose another model";

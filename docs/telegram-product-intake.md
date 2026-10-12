@@ -92,7 +92,8 @@ A quilted lunch bag with two zip compartments and a padded top handle. …
 ```
 
 **What it writes:** a short summary and a description (from the photo and your words), a category (only one you already
-use, or none), the colours it can clearly see, and a name when you sent none.
+use, or none), the colours it can clearly see, and a name when you sent none. If it cannot suggest a usable name, the draft is called "New product"
+and the reply says to name it in Admin.
 
 **What it never does:** it never sets the price, the currency, the minimum order, or anything about stock or delivery: those come
 only from what you type. The AI is not shown a line of yours that looks like a price, an order size, stock or delivery, and it is told
@@ -145,19 +146,20 @@ from credit you buy there after that.
 
 ### Cost, privacy and limits
 
-* **Cost with Qwen:** the standard model is `qwen3-vl-plus`. Alibaba's international list price is about **$0.20 per million tokens read and
-  $1.60 per million written** (a token is about three quarters of a word, and a photo is roughly 1,000 tokens), which is **about a tenth of a
-  cent per product**. Alibaba advertises a free allowance for new accounts (typically 1 million tokens per model for 90 days): the **Free
-  Quota** page in the console shows what your account has. When it is used up the bot says so and goes back to saving drafts as you type
-  them; a new account must then verify its identity and add money in the Alibaba Cloud console before the AI works again.
-  Prices can change: check them in the console.
+* **Cost with Qwen:** the standard model is `qwen3-vl-plus`. Its international list price is about **$0.20 per million tokens read and $1.60 per
+  million written** (as listed on the sites that track Alibaba's prices: the console's pricing page is the authority) and a token is about three
+  quarters of a word, a photo roughly 1,000 tokens, which is **about a tenth of a cent per product**. Alibaba advertises a free allowance for new
+  accounts (typically 1 million tokens per model for 90 days), but its pages disagree about whether that covers the Singapore region, and
+  this model is not on its list, so **do not count on it**: the **Free Quota** page in the console shows what your account really has. When it
+  is used up the bot says so and goes back to saving drafts as you type them; a new account must then verify its identity and add money in the
+  Alibaba Cloud console before the AI works again.
 * **Cost with Puter:** the standard model, `claude-haiku-5-5`, is about $0.10 per million tokens read and $0.50 per million written, paid
   from the Puter account's allowance (puter.com/dashboard#usage).
 * **Another model:** add a variable (type **Text**, not Secret) named `AI_MODEL`, for example `qwen3.8-flash` for Qwen or `claude-sonnet-5-5` for
-  Puter. It must be a model that can read pictures: Qwen's older `qwen-flash`, `qwen-plus` and `qwen-max` cannot (`/ai` says so). The bot switches
+  Puter. It must be a model that can read pictures: some Qwen models cannot, and `/ai` tells you. The bot switches
   off the "thinking" mode of Qwen3 models, which would only make answers slower and dearer. Remove the variable to go back to the standard model.
 * **Privacy:** the photo (shrunk to 768 pixels wide when Cloudflare's resizer is available, otherwise only if it is small) and the words you
-  typed, without lines that look like prices, are sent to Alibaba Cloud (Singapore) or to Puter and the company that runs the model, only to
+  typed, without lines that look like prices, are sent to Alibaba Cloud (its international service) or to Puter and the company that runs the model, only to
   write the draft. Nothing else from the shop is sent.
 * **Limits:** both services limit how many requests a new account may make at once. Photos sent in a rush that hit the limit are retried
   automatically, and `redo` covers the rest.
@@ -223,7 +225,9 @@ Each row shows warnings: *No category*, *No price*, *No photo*.
 | The draft is there but has no photo | Reply to the bot's confirmation with the photo. If it keeps failing, the file may not be a real picture. |
 | "AI drafting is off" after `/ai` | The secret `QWEN_API_KEY` (or `PUTER_AUTH_TOKEN`) is missing. Add it (see above) and press **Deploy**. |
 | "Alibaba Cloud did not accept the API key" | The key was copied wrongly, deleted, or made in a different region. Make a new key in the **Singapore** region and replace the secret. If it still fails, add the **API Host** from the key dialog as the text variable `QWEN_API_BASE`. |
-| "Alibaba Cloud says there is no free allowance or money left" | In the Alibaba Cloud console open **Model Studio → Free Quota** (and **Billing**). A new account must verify its identity before it can add money or turn off *Free Quota Only*. Drafts are still saved as you type them. |
+| "Alibaba Cloud says the free allowance for this is used up, or the account has no money left" | In the Alibaba Cloud console open the **Free Quota** page (and **Billing**). A new account must verify its identity before it can add money or turn off *Free Quota Only*. Drafts are still saved as you type them. |
+| "Alibaba Cloud says Model Studio is not switched on for this account yet" | Open Model Studio in the Alibaba Cloud console and agree to its terms to activate it, then try again. |
+| "Alibaba Cloud answered “not found” for that address" | The text variable `QWEN_API_BASE` points at an address Alibaba does not serve. Delete the variable (the built-in address is used then) or copy the **API Host** again. |
 | "that AI model cannot be used with this account" | The model named in `AI_MODEL` does not exist for your account or region. Delete that variable (the standard model works) or choose another. |
 | "…safety check refused this photo or text" | Alibaba's own content check said no. Try a different photo of the product. |
 | "answered, but not as if it could see the test picture" | The model in `AI_MODEL` cannot read pictures. Delete that variable or pick a model that can. |
@@ -233,6 +237,8 @@ Each row shows warnings: *No category*, *No price*, *No photo*.
 | "…wants the email address of that account confirmed" | Sign in at puter.com with the account that made the token, confirm its email address, and try again. |
 | "is busy" / "took too long" | Try again in a minute, or reply `redo` to the message. The draft is already saved. |
 | "the AI's answer could not be used" | The model answered in a form the bot could not read. Reply `redo`; if it keeps happening, tell the developer which photo. |
+| A reply stays on "Looking at your photo…" | The bot was stopped before it could name the photo, so nothing was saved. Send the photo again (with the name on the first line if you can). |
+| "The AI could not suggest a usable name" | The AI's name had a price or other off-limits words in it, so the draft is called "New product". Rename it in Admin. |
 | A draft stays on "Writing the description…" | Reply to it with the word `redo`. If it keeps happening, Cloudflare's free plan may be stopping the bot's work part-way (the Logs show "exceeded CPU"): the $5/month Workers plan removes that limit. |
 | Anything else | Cloudflare → Workers & Pages → chadrey-wholesale → **Logs** shows what happened. |
 
@@ -261,24 +267,36 @@ If the token leaks, send `/revoke` to BotFather, then update `TELEGRAM_BOT_TOKEN
   covers the price, colours and sizes too; SQLite gives `'now'` the same value everywhere in one statement). Only the delivery that really created
   the draft asks the AI, so two copies of one Telegram message cost one question. The first reply is changed with `editMessageText` (a new
   message when that fails). A photo with no usable name is the one exception: the AI is asked before saving, because the product needs a name for
-  its web address; albums are never named that way because their other photos would arrive while the AI is still thinking. The AI sees the name
+  its web address, so the bot first sends "Looking at your photo…" and changes that message into the result (a run that is cut off is then never
+  silent); albums are never named that way because their other photos would arrive while the AI is still thinking. When the AI's name cannot
+  be used (a price in it), the draft is saved as "New product" with the AI's description rather than thrown away. The AI sees the name
   and the owner's other lines, minus lines that look like a price, an order size, stock or delivery. Its answer is read as strict JSON from the first
   complete `{…}` (at most 16,000 characters), every part is cut to a safe length, stripped of invisible characters, HTML and markdown, and checked
-  sentence by sentence (`mayNotSay`) BEFORE formatting is removed, so `#48,000` is still seen as a price. Names, short descriptions and colours are
-  checked too; colours must be everyday colour names, with an optional shade, or ones the owner typed on a `Colors:` line. It may only choose a
-  category the shop already has. The checks are written so a very long answer stays quick (numbers are matched from their start only), which
-  matters on Cloudflare's free plan.
+  sentence by sentence (`mayNotSay`, in `worker/draftFilter.ts`) BEFORE formatting is removed, so `#48,000` and `N48k` are seen as prices, and
+  also with invisible characters read as spaces. A full stop after "Min.", "approx." or "No." does not end a sentence. The words "wholesale" and
+  "retail" alone are fine (the shop is a wholesaler); a wholesale or resell FIGURE is not. Names, short descriptions and colours are checked too;
+  colours must be everyday colour names, with an optional shade, or ones the owner typed on a `Colors:` line. It may only choose a category the
+  shop already has. **What it cannot catch:** a bare number on a price sticker with no currency or cue word ("48,000"), "Rs 500", obfuscated
+  spellings ("p r i c e", look-alike letters, "abc at gmail dot com") and short phone numbers; the second independent review measured 79 of
+  91 tricky phrasings caught and 7 of 51 ordinary sentences wrongly dropped (all on purpose: "available", "stock", "bulk", "cost"). The checks
+  are written so a very long answer stays quick (numbers are matched from their start only, only the first 3,000 characters are read), and
+  every pattern is compiled once when the Worker starts, which matters on Cloudflare's free plan.
 * Which service: `aiSettings` in `worker/config.ts` picks Qwen when `QWEN_API_KEY` is set, otherwise Puter when `PUTER_AUTH_TOKEN` is set;
   `AI_MODEL` applies to whichever answers.
 * Qwen (`qwenChat`): Alibaba Cloud Model Studio speaks the OpenAI chat format, so it is a plain `fetch`:
   `POST {base}/chat/completions` with `Authorization: Bearer <key>` and
   `{model, messages: [{role: "user", content: [{type: "text", text}, {type: "image_url", image_url: {url: "data:image/jpeg;base64,…"}}]}], max_tokens, enable_thinking: false}`.
-  The base is `https://dashscope-intl.aliyuncs.com/compatible-mode/v1` (Singapore; Alibaba keeps this older address working) unless
+  The base is `https://dashscope-intl.aliyuncs.com/compatible-mode/v1` (Singapore; one Alibaba page says this older address "remains fully
+  functional", while its international page lists only a per-workspace address, so `QWEN_API_BASE` is the way out if keys made later do not work
+  on it; a host pasted without `https://` is accepted) unless
   `QWEN_API_BASE` holds another Alibaba address (https and `aliyuncs.com` or `alibabacloud.com` only, so a typo cannot send the key elsewhere).
   Keys are region-bound. `enable_thinking: false` is sent for `qwen3*` models, which think by default from Qwen3.5 on (not for models whose name
   says "thinking", and not for older models). JPEG, PNG and WebP are accepted; a GIF is refused before anything is sent. Alibaba's error codes
-  (`invalid_api_key`, `Arrearage`, `AllocationQuota.FreeTierOnly`, `data_inspection_failed`, `model_not_found`, `Throttling.*`, `limit_requests`)
-  are mapped in `qwen.ts`; both the nested `{"error": {…}}` and the flat `{"code", "message"}` shapes are read. The tests use a pretend Alibaba
+  (`invalid_api_key`, `Arrearage`, `AllocationQuota.FreeTierOnly`, `AccessDenied.Unpurchased`, `data_inspection_failed`, `model_not_found`,
+  `Throttling.*`, `limit_requests`) are mapped in `qwen.ts`; both the nested `{"error": {…}}` and the flat `{"code", "message"}` shapes are read,
+  an error inside a 200 reply counts, and the same code `Throttling.AllocationQuota` means "money" when Alibaba's words say "free" and "wait a
+  little" otherwise. A 5xx is retried like "busy". A Qwen3 model that rejects `enable_thinking` is asked once more without it. Drafts ask Qwen for
+  at most 1,200 tokens (older Qwen models allow fewer than Puter's models do). The tests use a pretend Alibaba
   (`worker/testkit.ts`, and `QWEN_API_ORIGIN` in the browser tests). The live service has to be tried once with `/ai` after the key is added.
 * Puter has no SDK that runs in a Worker, so `puterChat` sends the request Puter.js 2.6.4 sends: `POST https://api.puter.com/drivers/call` with
   `{interface: "puter-chat-completion", driver: "ai-chat", method: "complete", args: {messages: [{content: [prompt, {image_url: {url}}]}], model,
@@ -286,4 +304,6 @@ If the token leaks, send `/revoke` to BotFather, then update `TELEGRAM_BOT_TOKEN
   Puter's OpenAI- and Anthropic-compatible endpoints need a paid Puter plan; `/drivers/call` works on a free account. No sampling options are
   sent, because current Claude models reject non-default values.
 * After the key is added, look at one real message in Cloudflare's Workers Logs and check its CPU time (the free plan allows 10 ms; waiting for the
-  AI does not count). The checks above were measured at well under 5 ms even for hostile input, but the live total has not been measured.
+  AI does not count). Measured in Node, not in Cloudflare: about 0.2–0.6 ms for a normal answer and 1–3 ms for hostile input once warm, and about
+  7 ms for the very first hostile input after a start. The pattern compile (about 14 ms in Node) happens at Worker start. The live total has not
+  been measured.

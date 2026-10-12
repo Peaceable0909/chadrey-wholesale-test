@@ -100,7 +100,8 @@ describe("reading the AI's answer", () => {
   it("keeps the owner's name, and uses the AI's only when there is none", () => {
     expect(parseAiAnswer(answer({ name: "Something else" }), owner).name).toBe("Premium lunch box");
     expect(parseAiAnswer(answer({ name: '"Quilted Lunch Bag."' }), { ...owner, ownerName: "" }).name).toBe("Quilted Lunch Bag");
-    expect(failure(() => parseAiAnswer(answer({ name: "" }), { ...owner, ownerName: "" }))?.kind).toBe("bad_answer");
+    // No usable name at all: the draft is still worth keeping, with a stand-in name for the owner to change.
+    expect(parseAiAnswer(answer({ name: "" }), { ...owner, ownerName: "" })).toMatchObject({ name: "New product", namePlaceholder: true });
   });
 
   it.each([
@@ -128,7 +129,7 @@ describe("reading the AI's answer", () => {
     });
 
     it("keeps sizes and quantities, which are not prices", () => {
-      const text = clean("A 100ml bottle of shea butter hand cream, sold in cartons of 24 pieces.");
+      const text = clean("A 100ml bottle of shea butter hand cream, with 24 pieces in the display box.");
       expect(text).toContain("100ml");
       expect(text).toContain("24 pieces");
     });
@@ -364,6 +365,20 @@ describe("which service answers", () => {
     expect(bodies[0].messages[0].content).toHaveLength(2);
   });
 
+  it("asks Qwen for a shorter answer than Puter's Claude, because older Qwen models allow fewer words", async () => {
+    const qwen = record();
+    await draftWithAi(baseEnv({ QWEN_API_KEY: QWEN_KEY }), qwen.fetchImpl, request);
+    expect(qwen.bodies[0].max_tokens).toBe(1200);
+    await checkAi(baseEnv({ QWEN_API_KEY: QWEN_KEY }), qwen.fetchImpl).catch(() => undefined);
+    expect(qwen.bodies[1].max_tokens).toBe(200);
+
+    const puter = record();
+    await draftWithAi(baseEnv({ PUTER_AUTH_TOKEN: PUTER_TOKEN }), puter.fetchImpl, request);
+    expect(puter.bodies[0].args.max_tokens).toBe(2500);
+    await checkAi(baseEnv({ PUTER_AUTH_TOKEN: PUTER_TOKEN }), puter.fetchImpl).catch(() => undefined);
+    expect(puter.bodies[1].args.max_tokens).toBe(400);
+  });
+
   it("is Qwen even when the Puter token is set too, and Puter when only that is set", async () => {
     const both = record();
     await draftWithAi(baseEnv({ QWEN_API_KEY: QWEN_KEY, PUTER_AUTH_TOKEN: PUTER_TOKEN }), both.fetchImpl, request);
@@ -509,8 +524,15 @@ describe("reading the AI's answer, strictly", () => {
     expect(error).toMatchObject({ kind: "bad_answer", message: expect.stringMatching(/far longer/) });
   });
 
-  it("refuses a name that says what the AI may not, but keeps the owner's own name whatever it says", () => {
-    expect(failure(() => parseAiAnswer(answer({ name: "Lunch Bag ₦5,000 In Stock" }), { ...opts, ownerName: "" }))).toMatchObject({ kind: "bad_answer" });
+  it("never uses a name with a price in it, but keeps the draft under a stand-in name; the owner's own name is kept whatever it says", () => {
+    const standIn = parseAiAnswer(answer({ name: "Lunch Bag ₦5,000 In Stock" }), { ...opts, ownerName: "" });
+    expect(standIn).toMatchObject({ name: "New product", namePlaceholder: true });
+    expect(standIn.description).toBe(AI_ANSWER.description);
+    // One ordinary word that trips the check is taken out of the name instead.
+    const salvaged = parseAiAnswer(answer({ name: "Stainless Steel Stock Pot" }), { ...opts, ownerName: "" });
+    expect(salvaged.name).toBe("Stainless Steel Pot");
+    expect(salvaged).not.toHaveProperty("namePlaceholder");
+    expect(parseAiAnswer(answer({ name: "Quilted Lunch Bag" }), { ...opts, ownerName: "" })).not.toHaveProperty("namePlaceholder");
     expect(parseAiAnswer(answer({ name: "Lunch Bag ₦5,000 In Stock" }), opts).name).toBe("Premium lunch box");
     expect(parseAiAnswer(answer(), { ...opts, ownerName: "Wholesale lunch box 24,000" }).name).toBe("Wholesale lunch box 24,000");
   });

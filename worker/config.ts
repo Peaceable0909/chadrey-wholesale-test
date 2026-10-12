@@ -49,7 +49,8 @@ export function qwenBase(env: Env): string | undefined {
   const wanted = env.QWEN_API_BASE?.trim();
   if (!wanted) return undefined;
   try {
-    const url = new URL(wanted);
+    // The "API Host" Alibaba shows may come without the https://.
+    const url = new URL(/^[a-z][a-z0-9+.-]*:\/\//i.test(wanted) ? wanted : `https://${wanted}`);
     if (url.protocol !== "https:" || !/(^|\.)(aliyuncs|alibabacloud)\.com$/i.test(url.hostname)) return undefined;
     const path = url.pathname.replace(/\/+$/, "");
     const at = path.indexOf("/compatible-mode");

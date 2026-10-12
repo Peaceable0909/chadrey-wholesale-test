@@ -673,15 +673,25 @@ describe("smart drafting with AI", () => {
   });
 
   describe("a photo with no name", () => {
-    it("is named and described by the AI when it is sent on its own", async () => {
+    it("is named and described by the AI when it is sent on its own, and the owner hears from the bot while the AI works", async () => {
+      let whileWaiting = "";
+      backend.state.puterReply = async () => {
+        whileWaiting = lastReply();
+        return aiAnswer();
+      };
       await run(photoUpdate(backend, { id: 280 }), withAi());
+
+      expect(whileWaiting).toContain("✨ Looking at your photo to name and describe it…");
+      expect(whileWaiting).toContain("send the photo again");
+      expect(await products()).toHaveLength(1);
 
       const [saved] = await products();
       expect(saved).toMatchObject({ name: "Quilted Insulated Lunch Bag", slug: "quilted-insulated-lunch-bag", is_active: false, price_tiers: [], description: AI_ANSWER.description, short_description: AI_ANSWER.short_description });
       expect(JSON.parse(saved.colors)).toEqual(["beige", "black", "pink", "blue"]);
       expect(await images()).toHaveLength(1);
       expect(backend.state.sent).toHaveLength(1);
-      expect(backend.state.edits).toHaveLength(0);
+      expect(backend.state.edits).toHaveLength(1);
+      expect(lastReply()).not.toContain("Looking at your photo");
       expect(lastReply()).toContain("✨ Written by AI");
       expect(lastReply()).toContain("No price yet");
       expect(backend.state.puterCalls[0].body.args.messages[0].content[0]).toContain("Product name: (not given)");
@@ -699,6 +709,10 @@ describe("smart drafting with AI", () => {
       expect(await images()).toHaveLength(0);
       expect(lastReply()).toContain("the AI could not suggest one: your Puter allowance for AI is used up");
       expect(lastReply()).toContain("Put the name on the first line");
+      // The "looking" message was changed, not followed by a second one.
+      expect(backend.state.sent).toHaveLength(1);
+      expect(backend.state.edits).toHaveLength(1);
+      expect(lastReply()).not.toContain("Looking at your photo");
     });
   });
 
@@ -1001,12 +1015,24 @@ describe("drafts that people edit, and messages that arrive twice", () => {
   });
 
   describe("a name the AI makes up", () => {
-    it("is refused when it says something only the owner may say, and nothing is saved", async () => {
+    it("is never used when it has a price in it: the draft is kept under a stand-in name, and the reply says to change it", async () => {
       backend.state.puterReply = async () => aiAnswer({ name: "Lunch Bag ₦5,000 In Stock" });
       await run(photoUpdate(backend, { id: 440 }), withAi());
-      expect(await products()).toHaveLength(0);
-      expect(lastReply()).toContain("the AI could not suggest one: the AI's answer could not be used.");
-      expect(lastReply()).not.toContain("..");
+
+      const [saved] = await products();
+      expect(saved).toMatchObject({ name: "New product", is_active: false, description: AI_ANSWER.description, price_tiers: [] });
+      expect(JSON.stringify(saved)).not.toMatch(/5,000|In Stock/);
+      expect(await images()).toHaveLength(1);
+      expect(lastReply()).toContain("New product");
+      expect(lastReply()).toContain("The AI could not suggest a usable name, so please give this product a name in Admin before you show it.");
+      expect(lastReply()).not.toContain("5,000");
+    });
+
+    it("keeps the rest of a name when one ordinary word in it is the problem", async () => {
+      backend.state.puterReply = async () => aiAnswer({ name: "Stainless Steel Stock Pot" });
+      await run(photoUpdate(backend, { id: 441 }), withAi());
+      expect((await products())[0].name).toBe("Stainless Steel Pot");
+      expect(lastReply()).not.toContain("please give this product a name");
     });
   });
 
@@ -1085,12 +1111,13 @@ describe("with Alibaba's Qwen", () => {
 
   it.each([
     ["the key is rejected", () => qwenError(401, "invalid_api_key", "Incorrect API key provided."), /Alibaba Cloud did not accept the API key/],
-    ["the account is overdue", () => qwenError(400, "Arrearage", "Access denied, please make sure your account is in good standing."), /no free allowance or money left/],
-    ["the free allowance is used up", () => qwenError(403, "AllocationQuota.FreeTierOnly", "The free tier of the model has been exhausted."), /Model Studio > Free Quota/],
+    ["the account is overdue", () => qwenError(400, "Arrearage", "Access denied, please make sure your account is in good standing."), /the free allowance for this is used up, or the account has no money left/],
+    ["the free allowance is used up", () => qwenError(403, "AllocationQuota.FreeTierOnly", "The free tier of the model has been exhausted."), /Free Quota page and Billing/],
+    ["Model Studio was never switched on", () => qwenError(403, "AccessDenied.Unpurchased", "Service not activated. Activate it in the console."), /Model Studio is not switched on for this account/],
     ["Alibaba is busy", () => qwenError(429, "limit_requests", "slow down"), /Alibaba Cloud is busy/],
     ["the safety check refuses the photo", () => qwenError(400, "data_inspection_failed", "Input or output data may contain inappropriate content."), /safety check refused this photo/],
     ["the model is not there", () => qwenError(404, "model_not_found", "The model xxx does not exist or you do not have access to it."), /Remove the AI_MODEL setting/],
-    ["Alibaba has a problem", () => qwenError(500, "internal_error", "An internal error has occured, please try again later."), /internal error has occured, please try again later\./],
+    ["Alibaba has a problem", () => qwenError(500, "internal_error", "An internal error has occured, please try again later."), /Alibaba Cloud is busy right now/],
     ["the answer is not JSON", () => qwenOk("Sorry, I can't help with that."), /could not be used/],
     [
       "Alibaba cannot be reached",

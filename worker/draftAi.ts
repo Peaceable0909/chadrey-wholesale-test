@@ -31,9 +31,14 @@ const MAX_ANSWER_CHARACTERS = 16_000;
 const TEST_PICTURE =
   "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAIAAADYYG7QAAAANklEQVR42u3OQQ0AAAgAoetfWls4H2wEoKlXEhISEhISEhISEhISEhISEhISEhISEhISEhK6s98T93mKDkyKAAAAAElFTkSuQmCC";
 
+/** Stands in for a name when the owner gave none and the AI's suggestion could not be used. */
+export const PLACEHOLDER_NAME = "New product";
+
 export type AiDraft = {
-  /** The owner's name when they gave one, otherwise the AI's suggestion. */
+  /** The owner's name when they gave one, otherwise the AI's suggestion (or PLACEHOLDER_NAME). */
   name: string;
+  /** True when the name is only PLACEHOLDER_NAME, so the owner has to name the product. */
+  namePlaceholder?: boolean;
   short_description: string;
   description: string;
   /** One of the shop's existing categories, or null. */
@@ -140,8 +145,10 @@ export function parseAiAnswer(answer: string, options: { categories: string[]; o
   const data = extractJson(answer);
   if (!data) throw new AiError("bad_answer", "The AI did not answer in the expected form.");
 
-  const name = options.ownerName.trim() || cleanName(data.name);
-  if (name.length < 2) throw new AiError("bad_answer", "The AI did not suggest a usable product name.");
+  // A good description is worth keeping even when the AI's name for the product cannot be used: the draft then gets a stand-in name to change.
+  const ownerName = options.ownerName.trim();
+  const suggested = ownerName ? "" : cleanName(data.name);
+  const name = ownerName || suggested || PLACEHOLDER_NAME;
 
   const description = cleanDescription(data.description);
   if (description.length < 30) throw new AiError("bad_answer", "The AI's description was too short to use.");
@@ -152,7 +159,14 @@ export function parseAiAnswer(answer: string, options: { categories: string[]; o
   const wanted = plain(tidy(data.category, 120).replace(/\n+/g, " ")).toLowerCase();
   const category = wanted && wanted !== "uncategorised" ? (options.categories.find(known => known.trim().toLowerCase() === wanted) ?? null) : null;
 
-  return { name, short_description: short, description, category, colors: cleanColours(data.colors, ownerColours(options.notes ?? [])) };
+  return {
+    name,
+    ...(ownerName || suggested ? {} : { namePlaceholder: true }),
+    short_description: short,
+    description,
+    category,
+    colors: cleanColours(data.colors, ownerColours(options.notes ?? [])),
+  };
 }
 
 // --- Photos for the AI --------------------------------------------------------------------------------------------------
@@ -225,8 +239,8 @@ export async function draftWithAi(env: Env, doFetch: typeof fetch, request: Draf
   for (let attempt = 1; ; attempt += 1) {
     if (timeLeft() < MIN_ATTEMPT_MS) throw outOfTime();
     try {
-      // Some models think before they answer, and that counts against this number, so it is generous.
-      const answer = await ask(env, doFetch, settings, { prompt, images, maxTokens: 2500, timeoutMs: timeLeft() });
+      // Puter's Claude models may think before they answer, and that counts against the number, so it is generous. Qwen's thinking is switched off and older Qwen models allow fewer.
+      const answer = await ask(env, doFetch, settings, { prompt, images, maxTokens: settings.provider === "qwen" ? 1200 : 2500, timeoutMs: timeLeft() });
       return parseAiAnswer(answer, { categories: request.categories, ownerName: request.ownerName, notes: request.notes });
     } catch (error) {
       if (!(error instanceof AiError) || error.kind !== "busy" || attempt >= 3 || timeLeft() < 6000) throw error;
@@ -240,7 +254,7 @@ export async function checkAi(env: Env, doFetch: typeof fetch): Promise<{ provid
   const settings = aiSettings(env);
   if (!settings.enabled || !settings.provider) throw new AiError("auth", "AI drafting is not switched on.");
   const started = Date.now();
-  const answer = await ask(env, doFetch, settings, { prompt: "What is the main colour of this picture? Reply with one word.", images: [TEST_PICTURE], maxTokens: 400, timeoutMs: AI_TIMEOUT_MS });
+  const answer = await ask(env, doFetch, settings, { prompt: "What is the main colour of this picture? Reply with one word.", images: [TEST_PICTURE], maxTokens: settings.provider === "qwen" ? 200 : 400, timeoutMs: AI_TIMEOUT_MS });
   return {
     provider: settings.provider,
     model: settings.model,

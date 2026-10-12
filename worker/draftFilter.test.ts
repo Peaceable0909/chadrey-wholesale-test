@@ -38,14 +38,17 @@ describe("what the AI may not say", () => {
     "50 块",
     "10% discount for bulk buyers.",
     "Special offer: sale price",
-    "wholesale",
-    "Great for resellers",
+    "Wholesale: 48,000",
+    "55,000-60,000 resell",
+    "Retail 55,000",
     // orders and quantities
     "Minimum order 500 pieces.",
     "MOQ applies.",
     "Bulk orders welcome",
     "Available in bulk, order at least 100 units.",
     "Quantity: 24 pcs per carton at 48000 per carton",
+    "Sold in cartons of 24.",
+    "Sold per carton of 24 pieces.",
     // stock and availability
     "In stock now.",
     "Limited stock, order now.",
@@ -83,6 +86,83 @@ describe("what the AI may not say", () => {
     "FDA certified.",
     // the bot's own label
     "Draft ID: 123e4567-e89b-12d3-a456-426614174000",
+    // found by the second independent review: price forms
+    "A sticker on the box reads N48k.",
+    "The tag shows N48.5k.",
+    "A tag says #48,000.",
+    "A handwritten label says #48000.",
+    "The tag reads N-48000.",
+    "The label shows N 48 000.",
+    "The label is printed 48000/-.",
+    "The sticker says 48,000/-.",
+    "The label says 120/pc.",
+    "The label shows 48k/pc.",
+    "Tag: 5,000 a dozen.",
+    "Tag: 5,000/dozen.",
+    "The sticker says 2 for 5,000.",
+    "The tag reads Rp 50.000.",
+    "The tag reads MYR 50.",
+    "The tag reads SGD 20.",
+    "The tag reads KRW 12000.",
+    "Valued at 5,000 per set.",
+    "Only 5,000.",
+    // offers and order sizes
+    "Buy 3 get 1 free.",
+    "Buy one get one.",
+    "Free gift with every set.",
+    "Min. 24 pcs.",
+    "Min 24 pcs per colour.",
+    "Order 24 or more.",
+    "Order 24+ pieces.",
+    "24 pcs and above.",
+    // stock and delivery times
+    "Only a few pieces left.",
+    "Last pieces.",
+    "Limited pieces.",
+    "Selling fast.",
+    "We have 500 pcs on hand.",
+    "Coming soon.",
+    "Arrives in 3-5 days.",
+    "Ready in 7 days.",
+    "Production time 7-10 days.",
+    "Takes 7 to 10 days to make.",
+    "COD accepted.",
+    "FOB Bangkok.",
+    "Send to your door by air or sea.",
+    // ways to get in touch
+    "Line: abc123",
+    "IG: myshop",
+    "Wechat: abc123",
+    "Contact: Somchai",
+    "DM for details.",
+    "DM to order.",
+    "Inbox me.",
+    "Chat with us.",
+    "Call now.",
+    "Scan the QR code to follow.",
+    "Follow our page.",
+    "Subscribe to our channel.",
+    "Call (555) 123-4567.",
+    "Call 081 - 234 - 5678.",
+    "Call (081) 234 5678.",
+    "Visit linktr.ee/myshop",
+    "Order at myshop.in",
+    "Order at myshop.de",
+    "Order at myshop.hk",
+    "Order at myshop.tech",
+    "Weixin: abc123",
+    // compliance claims
+    "ISO 9001 compliant.",
+    "CE marked.",
+    "RoHS compliant.",
+    "BPA-free.",
+    "Halal.",
+    "Dermatologically tested.",
+    "Lab tested.",
+    "Money-back promise.",
+    "Free replacement if damaged.",
+    "Returns accepted within 7 days.",
+    "100% authentic.",
   ])("catches: %s", text => {
     expect(mayNotSay(text)).toBe(true);
   });
@@ -93,7 +173,7 @@ describe("what the AI may not say", () => {
     "It is shown in beige, black, pink and blue.",
     "Two zip compartments",
     "Removable shoulder strap",
-    "A 100ml bottle of shea butter hand cream, sold in cartons of 24 pieces.",
+    "A 100ml bottle of shea butter hand cream, with 24 pieces in the display box.",
     "Measures 20 x 15 x 10 cm.",
     "Size 20*15*10 cm",
     "Model KT_100 in matte finish.",
@@ -120,6 +200,43 @@ describe("what the AI may not say", () => {
     "The 5-piece set includes a pot, a pan and three lids.",
     "Height 12 cm, width 8 cm.",
     "Includes a 1.5 m cable.",
+    // ordinary words the first version wrongly dropped (found by the second independent review)
+    "Wholesale buyers will like the set of 6 cups.",
+    "Ideal for boutiques, retailers and gift shops.",
+    "Perfect for wholesale buyers who need a classic everyday tote.",
+    "Comes in retail packaging with a branded hang tag.",
+    "Great for resellers.",
+    "Just 25 cm wide, it fits easily under the arm.",
+    "A lightweight shoulder bag, only 300 g.",
+    "Only 2 drops are needed per use.",
+    "Requires 2 AA batteries only.",
+    "Weighs just 250 g, easy to carry.",
+    "Sizes 36 38 40 42 44 are shown on the label.",
+    "Size chart: 38 40 42 44 46 48.",
+    "Supports USB Power Delivery for fast charging.",
+    "Supports PD (Power Delivery) fast charging up to 20W.",
+    "Colourful pirate ship toy for ages 3 and up.",
+    "Ships flat for easy storage.",
+    "Comes in boxes of 100 each.",
+    "Building blocks, 100 pieces per set.",
+    "10,000mAh power bank with two USB ports and a digital display.",
+    "Refresh rate 120 Hz.",
+    "Sample rate 48 kHz.",
+    "Takes 3 hours to charge fully.",
+    "Battery lasts up to 7 days.",
+    "Cod fish crackers in a 50g pack.",
+    "Item no. 5083 in the range.",
+    "Item #1 in the range.",
+    "Pantone #2 shade.",
+    "Order 2 sizes up if you prefer a looser fit.",
+    "Pick up the pen with ease.",
+    "Keep your essentials on hand.",
+    "Fits 6.7 inch phones.",
+    "Mobile phone holder with a flexible neck.",
+    "A-line dress with 3/4 sleeves.",
+    "Sizes S/M/L/XL.",
+    "Dimensions 20/15/10 cm.",
+    "Made in Thailand.",
   ])("lets through: %s", text => {
     expect(mayNotSay(text)).toBe(false);
   });
@@ -146,15 +263,28 @@ describe("a description", () => {
     expect(cleanDescription("## Features\n**Zip** top and <b>quilted</b> body\n* Padded handle\n1. Shoulder strap\n• Mesh pocket")).toBe("Features\nZip top and quilted body\n- Padded handle\n- Shoulder strap\n- Mesh pocket");
   });
 
-  it("removes links, email addresses and phone numbers even when hidden characters are slipped in", () => {
-    const text = cleanDescription("A soft bag with a zip. Call 08​012​345678 now. See https://evil.example/x or mail me@evil.example. Padded handle.");
-    expect(text).toBe("A soft bag with a zip. Padded handle.");
+  it("removes links and email addresses, sentence by sentence", () => {
+    expect(cleanDescription("A soft bag with a zip. See https://evil.example/x or mail me@evil.example. Padded handle.")).toBe("A soft bag with a zip. Padded handle.");
+  });
+
+  it("does not let invisible characters hide what a line says: a phone number split by zero-width spaces, or words glued together", () => {
+    // The line goes, because it says what it may not once the invisible characters are read either as nothing or as spaces. Its neighbours stay.
+    expect(cleanDescription("A soft bag with a zip.\nCall 08\u200b012\u200b345678 now.\nPadded handle.")).toBe("A soft bag with a zip.\nPadded handle.");
+    expect(cleanDescription("A soft bag with a zip.\nFree\u200bshipping on every order.\nPadded handle.")).toBe("A soft bag with a zip.\nPadded handle.");
+    expect(cleanDescription("A soft bag with a zip.\nPri\u200bce: twelve.\nPadded handle.")).toBe("A soft bag with a zip.\nPadded handle.");
+    // Invisible characters on their own are just removed.
+    expect(cleanDescription("A soft\u200b bag with a zip.")).toBe("A soft bag with a zip.");
+  });
+
+  it("does not end a sentence after an abbreviation, so 'Min. 24 pcs' is seen whole", () => {
+    expect(cleanDescription("A soft bag with a zip. Min. 24 pcs. Padded handle.")).toBe("A soft bag with a zip. Padded handle.");
+    expect(cleanDescription("Measures approx. 20 cm wide. Item No. 5083 in the range.")).toBe("Measures approx. 20 cm wide. Item No. 5083 in the range.");
   });
 
   it("removes characters that cannot be seen: zero-width, right-to-left overrides, hidden tag characters, control characters", () => {
     const hidden = "A‮ quilted​ bag\u0007 with\ud800 a zip.\u{E0041}";
     expect(cleanDescription(hidden)).toBe("A quilted bag with a zip.");
-    expect(tidy("a\u0085b\u009bc d", 100)).toBe("a b c" + "d");
+    expect(tidy("a\u0085b\u009bc\u2028d", 100)).toBe("a b c" + "d");
   });
 
   it("reads full-width and other look-alike digits and letters as the plain ones", () => {
@@ -186,10 +316,25 @@ describe("a product name", () => {
     expect(cleanName("**Quilted** Lunch Bag\nwith a strap")).toBe("Quilted Lunch Bag with a strap");
   });
 
-  it("is refused when it says what the AI may not", () => {
+  it("is refused when it has a price or a number to call in it", () => {
     expect(cleanName("Lunch Bag ₦5,000 In Stock")).toBe("");
-    expect(cleanName("Wholesale Lunch Bag")).toBe("");
     expect(cleanName("Lunch Bag - call 08012345678")).toBe("");
+    expect(cleanName("Lunch Bag N48,000")).toBe("");
+  });
+
+  it("keeps the rest of a name when ONE ordinary word in it is the problem", () => {
+    expect(cleanName("Stainless Steel Stock Pot")).toBe("Stainless Steel Pot");
+    expect(cleanName("Bulk Storage Container Set")).toBe("Storage Container Set");
+    expect(cleanName("Available Lunch Bag")).toBe("Lunch Bag");
+    // Words that are fine on their own stay.
+    expect(cleanName("Wholesale Lunch Box")).toBe("Wholesale Lunch Box");
+    expect(cleanName("Pirate Ship Toy Set")).toBe("Pirate Ship Toy Set");
+    expect(cleanName("Retail Display Stand")).toBe("Retail Display Stand");
+    expect(cleanName("Sizes 36 38 40 42 44 Sneakers")).toBe("Sizes 36 38 40 42 44 Sneakers");
+    // Two problems, or a name that is nothing but the problem, are not worth keeping.
+    expect(cleanName("Stock Bulk Pot")).toBe("");
+    expect(cleanName("In Stock")).toBe("");
+    expect(cleanName("Free\u200bshipping Lunch Bag")).toBe("");
   });
 
   it("has no invisible characters, and is cut to 70 characters at a word", () => {
@@ -208,6 +353,9 @@ describe("a short description", () => {
     expect(cleanShort("Now only 5 dollars")).toBe("");
     expect(cleanShort("Ready to ship worldwide")).toBe("");
     expect(cleanShort("In stock and ready to ship.")).toBe("");
+    expect(cleanShort("Min. 24 pcs, ships worldwide")).toBe("");
+    expect(cleanShort("A soft lunch bag.\u200b")).toBe("A soft lunch bag.");
+    expect(cleanShort("Free\u200bshipping")).toBe("");
   });
 });
 

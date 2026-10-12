@@ -56,7 +56,10 @@ describe("configuration", () => {
     expect(qwenBase(baseEnv({ QWEN_API_BASE: "https://dashscope-intl.aliyuncs.com/compatible-mode/v1/" }))).toBe("https://dashscope-intl.aliyuncs.com/compatible-mode/v1");
     expect(qwenBase(baseEnv({ QWEN_API_BASE: "https://abc123.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1/chat/completions" }))).toBe("https://abc123.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1");
     expect(qwenBase(baseEnv({ QWEN_API_BASE: " https://dashscope-us.aliyuncs.com " }))).toBe("https://dashscope-us.aliyuncs.com/compatible-mode/v1");
-    for (const wrong of ["http://dashscope-intl.aliyuncs.com", "https://evil.example.com", "https://aliyuncs.com.evil.example", "https://evilaliyuncs.com", "not a url", "ftp://x.aliyuncs.com"]) {
+    // The "API Host" Alibaba shows may come without the https://.
+    expect(qwenBase(baseEnv({ QWEN_API_BASE: "abc123.ap-southeast-1.maas.aliyuncs.com" }))).toBe("https://abc123.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1");
+    expect(qwenBase(baseEnv({ QWEN_API_BASE: "dashscope-intl.aliyuncs.com/compatible-mode/v1" }))).toBe("https://dashscope-intl.aliyuncs.com/compatible-mode/v1");
+    for (const wrong of ["http://dashscope-intl.aliyuncs.com", "https://evil.example.com", "evil.example.com", "https://aliyuncs.com.evil.example", "aliyuncs.com.evil.example", "https://evilaliyuncs.com", "not a url", "ftp://x.aliyuncs.com", "javascript:alert(1)//aliyuncs.com", "https://x.aliyuncs.com@evil.com", "https://evil.com\\@dashscope-intl.aliyuncs.com"]) {
       expect(qwenBase(baseEnv({ QWEN_API_BASE: wrong }))).toBeUndefined();
     }
   });

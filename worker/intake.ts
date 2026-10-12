@@ -138,13 +138,15 @@ function categoryNames(known: KnownProduct[]): string[] {
 
 /** What goes in the draft's description: the AI's text, then the owner's own extra lines exactly as typed. */
 function composeDescription(aiText: string, notes: string[]): string {
-  return [aiText, notes.join("\n")].filter(part => part.trim()).join("\n\n").slice(0, 20_000);
+  return cut([aiText, notes.join("\n")].filter(part => part.trim()).join("\n\n"), 20_000);
 }
 
 function preview(text: string): string {
   return text.length <= PREVIEW_CHARACTERS ? text : `${cut(text, PREVIEW_CHARACTERS).replace(/\s+\S*$/, "")}…`;
 }
 
+/** The first reply to a photo with no words: the AI has to name the product before anything can be saved, so the owner is told straight away. */
+const LOOKING = "✨ Looking at your photo to name and describe it… If this message does not change within a minute, send the photo again.";
 const WRITING = ["✨ Writing the description from your photo… If this message does not change within a minute, reply to it with the word redo."];
 const aiDone = (draft: AiDraft) => ["✨ Written by AI from your photo. Please check it before you show it in the store:", draft.short_description, "", preview(draft.description)];
 const aiFailed = (error: unknown) => [`ℹ️ I couldn't write the description with AI: ${aiProblem(error)}.`, "The draft is saved as you sent it. To try again, reply to this message with the word redo."];
@@ -190,7 +192,7 @@ async function finishWithAi(
 }
 
 async function createDraft(ctx: Context, image: Incoming, caption: string): Promise<void> {
-  const { message, env, deps, say, ai } = ctx;
+  const { message, env, deps, say, edit, ai } = ctx;
   const parsed = parseProductMessage(caption);
   const alone = !message.media_group_id;
 
@@ -211,22 +213,26 @@ async function createDraft(ctx: Context, image: Incoming, caption: string): Prom
   const productId = await stableUuid(`product:${message.chat.id}:${message.media_group_id ?? message.message_id}`);
   const existing = await productBasics(env.DB, productId);
 
-  let name = (parsed.name || existing?.name || "").slice(0, 200);
+  let name = cut(parsed.name || existing?.name || "", 200);
   let photoBytes: ArrayBuffer | undefined;
+  /** The reply sent while the AI names a photo that came with no words. It is changed into the final reply. undefined when there is none. */
+  let pendingId: number | null | undefined;
   /** Set when the AI had to come up with the name, so its whole draft is saved together with the product. */
   let drafted: AiDraft | null = null;
 
   if (!name) {
-    // Only the AI can name a product from the photo alone (see the check above).
+    // Only the AI can name a product from the photo alone (see the check above). The owner hears from the bot first, so a slow or failed
+    // run is never silent.
+    pendingId = await say(LOOKING);
     photoBytes = (await ctx.telegram.downloadFile(image.fileId, MAX_PHOTO_BYTES)).bytes;
     try {
       drafted = await draftWithAi(env, deps.fetch, { ownerName: "", notes: parsed.notes, categories: categoryNames(known), photos: [photoBytes] }, { sleep: deps.sleep, deadline: ctx.startedAt + AI_DEADLINE_BEFORE_SAVE_MS });
     } catch (error) {
       console.error("the AI could not name the product", describe(error));
-      await say(`I couldn't find a product name in that caption, and the AI could not suggest one: ${aiProblem(error)}.\n\nPut the name on the first line, then the prices:\n\n${EXAMPLE}`);
+      await edit(pendingId, `I couldn't find a product name in that caption, and the AI could not suggest one: ${aiProblem(error)}.\n\nPut the name on the first line, then the prices:\n\n${EXAMPLE}`);
       return;
     }
-    name = drafted.name.slice(0, 200);
+    name = cut(drafted.name, 200);
   }
 
   const defaults = intakeDefaults(env);
@@ -248,7 +254,7 @@ async function createDraft(ctx: Context, image: Incoming, caption: string): Prom
   const saved: SavedDraft = {
     name,
     short_description: drafted?.short_description ?? "",
-    description: (drafted ? composeDescription(drafted.description, parsed.notes) : describeParsed(parsed)).slice(0, 20_000),
+    description: cut(drafted ? composeDescription(drafted.description, parsed.notes) : describeParsed(parsed), 20_000),
     category,
   };
 
@@ -298,6 +304,7 @@ async function createDraft(ctx: Context, image: Incoming, caption: string): Prom
     lines.push(`Category: ${view.category}${view.categoryNote}`);
     if (view.colors.length) lines.push(`Colours: ${view.colors.join(", ")} (seen in the photo)`);
     for (const warning of parsed.warnings) lines.push(`⚠️ ${warning}`);
+    if (drafted?.namePlaceholder) lines.push("ℹ️ The AI could not suggest a usable name, so please give this product a name in Admin before you show it.");
     if (same) lines.push(`ℹ️ You already have “${same.name}” (${same.is_active ? "live" : "hidden"}).`);
     if (aiLines.length) lines.push("", ...aiLines);
     lines.push("", `Review it: ${deps.origin}/admin/products?status=hidden`, `Draft ID: ${productId}`);
@@ -307,7 +314,14 @@ async function createDraft(ctx: Context, image: Incoming, caption: string): Prom
   // A draft that is new gets its text written by the AI after the first reply, so the owner is never left waiting and an
   // album's other photos can already join the draft. A draft the AI named is complete already.
   const willDraft = ai.enabled && !drafted && created && !photoFailed && photo !== null;
-  const sentId = await say(compose(willDraft ? WRITING : drafted ? aiDone(drafted) : []));
+  const firstReply = compose(willDraft ? WRITING : drafted ? aiDone(drafted) : []);
+  let sentId: number | null;
+  if (pendingId !== undefined) {
+    await edit(pendingId, firstReply);
+    sentId = pendingId;
+  } else {
+    sentId = await say(firstReply);
+  }
   if (willDraft && photo) await finishWithAi(ctx, { productId, sentId, photo, parsed, saved, typedCategory, known, compose, categoryNote });
 }
 

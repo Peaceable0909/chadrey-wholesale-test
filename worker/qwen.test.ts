@@ -89,6 +89,51 @@ describe("the request Alibaba receives", () => {
   });
 });
 
+describe("a Qwen3 model that has no thinking setting", () => {
+  const refuse = () => qwenError(400, "invalid_parameter_error", "parameter.enable_thinking is not supported for this model");
+
+  it("is asked again without the setting, once, and the answer is used", async () => {
+    const bodies: any[] = [];
+    const fetchImpl = (async (_url: string, init: RequestInit) => {
+      bodies.push(JSON.parse(String(init.body)));
+      return bodies.length === 1 ? refuse() : qwenOk("Hello");
+    }) as unknown as typeof fetch;
+    expect(await qwenChat({ ...base, model: "qwen3-max", fetch: fetchImpl })).toBe("Hello");
+    expect(bodies).toHaveLength(2);
+    expect(bodies[0].enable_thinking).toBe(false);
+    expect(bodies[1]).not.toHaveProperty("enable_thinking");
+  });
+
+  it("is not asked a third time, and another 400 is not retried", async () => {
+    let asked = 0;
+    const always = (async () => {
+      asked += 1;
+      return refuse();
+    }) as unknown as typeof fetch;
+    expect((await failure(qwenChat({ ...base, model: "qwen3-max", fetch: always }))).kind).toBe("other");
+    expect(asked).toBe(2);
+
+    asked = 0;
+    const otherProblem = (async () => {
+      asked += 1;
+      return qwenError(400, "invalid_parameter_error", "Range of max_tokens should be [1, 2048]");
+    }) as unknown as typeof fetch;
+    const error = await failure(qwenChat({ ...base, model: "qwen3-max", fetch: otherProblem }));
+    expect(asked).toBe(1);
+    expect(aiProblem(error)).toBe("Range of max_tokens should be [1, 2048]");
+  });
+
+  it("is not retried for a model that was never sent the setting", async () => {
+    let asked = 0;
+    const fetchImpl = (async () => {
+      asked += 1;
+      return refuse();
+    }) as unknown as typeof fetch;
+    await failure(qwenChat({ ...base, model: "qwen-vl-plus", fetch: fetchImpl }));
+    expect(asked).toBe(1);
+  });
+});
+
 describe("the answer", () => {
   it("is read from the first choice, trimmed", async () => {
     expect(await qwenChat({ ...base, fetch: answers(qwenOk("  Hello  ")) })).toBe("Hello");
@@ -112,31 +157,43 @@ describe("the answer", () => {
 });
 
 describe("when Alibaba says no", () => {
-  // The status and code strings are the ones in Alibaba's own error-code table.
+  // The status and code strings are the ones in Alibaba's own error-code table; the words are Alibaba's own wording where the table gives it.
   it.each([
-    ["the key is wrong", 401, "invalid_api_key", "auth"],
-    ["the key is wrong (the other spelling)", 401, "InvalidApiKey", "auth"],
-    ["the account is overdue", 400, "Arrearage", "credit"],
-    ["the free allowance is used up", 403, "AllocationQuota.FreeTierOnly", "credit"],
-    ["the quota is used up", 429, "insufficient_quota", "credit"],
-    ["the quota is used up (the other spelling)", 429, "Throttling.AllocationQuota", "credit"],
-    ["there are too many requests", 429, "limit_requests", "busy"],
-    ["there are too many requests at once", 429, "limit_burst_rate", "busy"],
-    ["the rate limit is hit", 429, "Throttling.RateQuota", "busy"],
-    ["the service is overloaded", 429, "Throttling.ServiceOverloaded", "busy"],
-    ["the content check refuses the picture", 400, "data_inspection_failed", "blocked"],
-    ["the content check refuses the picture (the other spelling)", 400, "DataInspectionFailed", "blocked"],
-    ["the model does not exist", 404, "model_not_found", "model"],
-    ["the account may not use the model", 403, "Model.AccessDenied", "model"],
-    ["the model was never bought", 403, "AccessDenied.Unpurchased", "model"],
-    ["something else goes wrong", 500, "internal_error", "other"],
-    ["the answer is a surprise", 403, "SomethingNew", "other"],
-  ])("%s", async (_name, status, code, kind) => {
-    const error = await failure(qwenChat({ ...base, fetch: answers(qwenError(status, code, "Alibaba says no")) }));
+    ["the key is wrong", 401, "invalid_api_key", "auth", undefined],
+    ["the key is wrong (the other spelling)", 401, "InvalidApiKey", "auth", undefined],
+    ["the account is overdue", 400, "Arrearage", "credit", "Access denied, please make sure your account is in good standing."],
+    ["the free allowance is used up", 403, "AllocationQuota.FreeTierOnly", "credit", "The free tier of the model has been exhausted."],
+    ["the free allocated quota is used up", 429, "Throttling.AllocationQuota", "credit", "Free allocated quota exceeded."],
+    ["the free allocated quota is used up (the other spelling)", 429, "insufficient_quota", "credit", "Free allocated quota exceeded."],
+    // The same codes also mean "a per-minute cap": that passes by itself, so it is retried, not reported as no money.
+    ["a quota cap is hit", 429, "insufficient_quota", "busy", "Allocated quota exceeded, please increase your quota limit."],
+    ["a quota cap is hit (the other spelling)", 429, "Throttling.AllocationQuota", "busy", "Allocated quota exceeded, please increase your quota limit."],
+    ["there are too many requests", 429, "limit_requests", "busy", undefined],
+    ["there are too many requests at once", 429, "limit_burst_rate", "busy", undefined],
+    ["the rate limit is hit", 429, "Throttling.RateQuota", "busy", undefined],
+    ["the service is overloaded", 429, "Throttling.ServiceOverloaded", "busy", undefined],
+    ["the content check refuses the picture", 400, "data_inspection_failed", "blocked", undefined],
+    ["the content check refuses the picture (the other spelling)", 400, "DataInspectionFailed", "blocked", undefined],
+    ["the model does not exist", 404, "model_not_found", "model", undefined],
+    ["the model is not there (a 404 that names it)", 404, "not_found", "model", "The model qwen-nope does not exist or you do not have access to it."],
+    ["the account may not use the model", 403, "Model.AccessDenied", "model", undefined],
+    ["Model Studio was never switched on", 403, "AccessDenied.Unpurchased", "plan", "Service not activated. Activate it in the console."],
+    ["Alibaba has an internal problem", 500, "internal_error", "busy", "An internal error has occured, please try again later or contact service support."],
+    ["the model is unavailable for a moment", 503, "ModelUnavailable", "busy", "Model is unavailable, please try again later."],
+    ["the content check service is down", 500, "InternalError.DataInspection", "busy", "Content moderation service unavailable."],
+    ["the answer is a surprise", 403, "SomethingNew", "other", undefined],
+  ])("%s", async (_name, status, code, kind, message) => {
+    const error = await failure(qwenChat({ ...base, fetch: answers(qwenError(status, code, message ?? "Alibaba says no")) }));
     expect(error).toBeInstanceOf(AiError);
     expect(error.provider).toBe("qwen");
     expect(error.kind).toBe(kind);
     expect(error.status).toBe(status);
+  });
+
+  it("does not blame the model when a wrong or retired address answers 'not found'", async () => {
+    const error = await failure(qwenChat({ ...base, fetch: answers(qwenError(404, "not_found", "No such route")) }));
+    expect(error.kind).toBe("other");
+    expect(aiProblem(error)).toMatch(/answered “not found” for that address.*QWEN_API_BASE.*remove it/);
   });
 
   it("explains a picture it cannot read without Alibaba's jargon", async () => {
@@ -156,15 +213,29 @@ describe("when Alibaba says no", () => {
     expect((await failure(qwenChat({ ...base, fetch: answers(new Response("Unauthorized", { status: 401 })) }))).kind).toBe("auth");
   });
 
-  it("copes with an error page that is not JSON", async () => {
+  it("copes with an error page that is not JSON: a 502 passes by itself, so it counts as busy", async () => {
     const error = await failure(qwenChat({ ...base, fetch: answers(new Response("Bad gateway", { status: 502 })) }));
-    expect(error.kind).toBe("other");
+    expect(error.kind).toBe("busy");
     expect(error.status).toBe(502);
+    const strange = await failure(qwenChat({ ...base, fetch: answers(new Response("I'm a teapot", { status: 418 })) }));
+    expect(strange.kind).toBe("other");
+  });
+
+  it("reads an error that comes with a success status: a 200 with an error in it is not an answer", async () => {
+    const hidden = new Response(JSON.stringify({ error: { code: "invalid_api_key", message: "Incorrect API key provided." } }), { status: 200 });
+    expect((await failure(qwenChat({ ...base, fetch: answers(hidden) }))).kind).toBe("auth");
+    const flat = new Response(JSON.stringify({ error: "something broke" }), { status: 200 });
+    expect((await failure(qwenChat({ ...base, fetch: answers(flat) }))).kind).toBe("other");
+    // "error": null next to a real answer is fine.
+    const fine = new Response(JSON.stringify({ error: null, choices: [{ message: { content: "Hello" } }] }), { status: 200 });
+    expect(await qwenChat({ ...base, fetch: answers(fine) })).toBe("Hello");
   });
 
   it("never repeats the key, even if Alibaba or the network does", async () => {
     const leaky = await failure(qwenChat({ ...base, fetch: answers(qwenError(500, "x", `failed for ${QWEN_KEY}`)) }));
     expect(leaky.message).not.toContain(QWEN_KEY);
+    const leakyInA200 = await failure(qwenChat({ ...base, fetch: answers(new Response(JSON.stringify({ error: { message: `key ${QWEN_KEY} is no good` } }), { status: 200 })) }));
+    expect(leakyInA200.message).not.toContain(QWEN_KEY);
 
     const broken = (async () => {
       throw new Error(`connect failed with ${QWEN_KEY}`);
@@ -197,8 +268,9 @@ describe("what a person is told", () => {
   const qwenFailure = (kind: AiError["kind"], message = "x") => new AiError(kind, message, undefined, "qwen");
 
   it("names Alibaba Cloud and says what to do", () => {
-    expect(aiProblem(qwenFailure("auth"))).toMatch(/Alibaba Cloud did not accept the API key.*different region.*QWEN_API_KEY/);
-    expect(aiProblem(qwenFailure("credit"))).toMatch(/Alibaba Cloud says there is no free allowance or money left.*Free Quota.*Billing.*verify its identity/);
+    expect(aiProblem(qwenFailure("auth"))).toMatch(/Alibaba Cloud did not accept the API key.*different region.*QWEN_API_KEY.*QWEN_API_BASE/);
+    expect(aiProblem(qwenFailure("credit"))).toMatch(/the free allowance for this is used up, or the account has no money left.*Free Quota page and Billing.*verify its identity/);
+    expect(aiProblem(qwenFailure("plan"))).toMatch(/Model Studio is not switched on for this account.*agree to its terms to activate it/);
     expect(aiProblem(qwenFailure("model"))).toMatch(/cannot be used with this account.*AI_MODEL/);
     expect(aiProblem(qwenFailure("blocked"))).toMatch(/Alibaba Cloud's own safety check refused this photo or text/);
     expect(aiProblem(qwenFailure("busy"))).toMatch(/Alibaba Cloud is busy right now/);
@@ -207,6 +279,6 @@ describe("what a person is told", () => {
   });
 
   it("never ends with a full stop, so the caller's own full stop does not double up", () => {
-    for (const kind of ["auth", "credit", "model", "blocked", "busy", "timeout", "unreachable", "bad_answer"] as const) expect(aiProblem(qwenFailure(kind))).not.toMatch(/[.\s]$/);
+    for (const kind of ["auth", "credit", "plan", "model", "blocked", "busy", "timeout", "unreachable", "bad_answer"] as const) expect(aiProblem(qwenFailure(kind))).not.toMatch(/[.\s]$/);
   });
 });
